@@ -1,10 +1,15 @@
 //! Show a custom window frame instead of the default OS window chrome decorations.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-use eframe::egui;
+use chrono::{Duration, Local, NaiveDateTime};
+use eframe::egui::{self, ScrollArea};
 use sidebar::dispose_sidebar;
+use sysinfo::{System, SystemExt};
 
-// TODO: sysinfo
+mod sidebar;
+mod system_info;
+
+// TODO: nvml-wrapper = "0.9.0"
 
 // Right Screen, Left side
 // pub const SIZE: egui::Vec2 = egui::Vec2 {
@@ -16,16 +21,23 @@ use sidebar::dispose_sidebar;
 
 // Right Screen, Right side
 pub const SIZE: egui::Vec2 = egui::Vec2 {
-    x: 150.0,
+    x: 350.0,
     y: 1032.0,
 };
 pub const POS: egui::Pos2 = egui::Pos2 {
-    x: 4330.0,
+    x: 4480.0 - SIZE.x,
     y: 148.0,
 };
 pub const EDGE: u32 = windows::Win32::UI::Shell::ABE_RIGHT;
 
 fn main() -> Result<(), eframe::Error> {
+    ctrlc::set_handler(move || {
+        println!("received Ctrl+C, removing appbar");
+        dispose_sidebar();
+        std::process::exit(0);
+    })
+    .expect("Error setting Ctrl-C handler");
+
     let options = eframe::NativeOptions {
         // Hide the OS-specific "chrome" around the window:
         decorated: false,
@@ -41,7 +53,12 @@ fn main() -> Result<(), eframe::Error> {
     eframe::run_native(
         "Sidebar", // unused title
         options,
-        Box::new(|_cc| Box::<MyApp>::default()),
+        Box::new(|_cc| {
+            Box::new(MyApp {
+                system_status: System::new_all(),
+                ..Default::default()
+            })
+        }),
     )?;
 
     dispose_sidebar();
@@ -50,10 +67,12 @@ fn main() -> Result<(), eframe::Error> {
 }
 
 #[derive(Default)]
-struct MyApp {
-    firstupdate: bool,
-    create_frame: u64,
-    framecount: u64,
+pub struct MyApp {
+    pub firstupdate: bool,
+    pub create_frame: u64,
+    pub framecount: u64,
+    pub system_status: System,
+    pub last_update_timestamp: NaiveDateTime,
 }
 
 impl eframe::App for MyApp {
@@ -62,6 +81,12 @@ impl eframe::App for MyApp {
     }
 
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        let now = Local::now().naive_local();
+        if now - self.last_update_timestamp > Duration::milliseconds(1000) {
+            self.system_status.refresh_all();
+            self.last_update_timestamp = now;
+        }
+
         self.framecount += 1;
 
         if frame.info().window_info.position != Some(POS) {
@@ -85,12 +110,15 @@ impl eframe::App for MyApp {
             ui.vertical_centered(|ui| {
                 ui.label("egui theme:");
                 egui::widgets::global_dark_light_mode_buttons(ui);
+                ui.label(format!("{}", self.framecount));
             });
+            ScrollArea::vertical().show(ui, |ui| {
+                ui.label(system_info::get_system_text(self));
+            });
+            ctx.request_repaint_after(std::time::Duration::from_millis(500));
         });
     }
 }
-
-mod sidebar;
 
 fn custom_window_frame(
     ctx: &egui::Context,

@@ -2,13 +2,18 @@ use std::{mem, ops::DerefMut, os::raw::c_void, sync::RwLock};
 
 use lazy_static::lazy_static;
 use windows::Win32::{
-    Foundation::{HWND, LPARAM, RECT},
+    Foundation::{GetLastError, SetLastError, HWND, LPARAM, RECT, WIN32_ERROR},
     Graphics::Dwm::{
         DwmSetWindowAttribute, DWMNCRENDERINGPOLICY, DWMNCRP_ENABLED, DWMWA_DISALLOW_PEEK,
         DWMWA_EXCLUDED_FROM_PEEK,
     },
-    UI::Shell::{
-        SHAppBarMessage, ABE_LEFT, ABM_NEW, ABM_QUERYPOS, ABM_REMOVE, ABM_SETPOS, APPBARDATA,
+    UI::{
+        Shell::{
+            SHAppBarMessage, ABE_LEFT, ABM_NEW, ABM_QUERYPOS, ABM_REMOVE, ABM_SETPOS, APPBARDATA,
+        },
+        WindowsAndMessaging::{
+            GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+        },
     },
 };
 
@@ -55,7 +60,7 @@ pub(crate) fn setup_sidebar() {
 
     unsafe {
         let abd_ptr = &mut appbardata as *mut APPBARDATA;
-        dbg!(SHAppBarMessage(ABM_NEW, abd_ptr));
+        SHAppBarMessage(ABM_NEW, abd_ptr);
         DwmSetWindowAttribute(
             hwnd,
             DWMWA_EXCLUDED_FROM_PEEK,
@@ -70,9 +75,11 @@ pub(crate) fn setup_sidebar() {
             mem::size_of::<DWMNCRENDERINGPOLICY>() as u32,
         )
         .expect("DWMWA_EXCLUDED_FROM_PEEK should work");
-        dbg!(SHAppBarMessage(ABM_QUERYPOS, abd_ptr));
-        dbg!(SHAppBarMessage(ABM_SETPOS, abd_ptr));
+        SHAppBarMessage(ABM_QUERYPOS, abd_ptr);
+        SHAppBarMessage(ABM_SETPOS, abd_ptr);
     }
+    set_window_unpeekable(hwnd);
+    set_window_unpeekable(hwnd);
 }
 
 pub fn dispose_sidebar() {
@@ -98,6 +105,30 @@ pub fn dispose_sidebar() {
 
     unsafe {
         let abd_ptr = &mut appbardata as *mut APPBARDATA;
-        dbg!(SHAppBarMessage(ABM_REMOVE, abd_ptr));
+        SHAppBarMessage(ABM_REMOVE, abd_ptr);
+    }
+}
+
+fn set_window_unpeekable(handle: HWND) {
+    let exstyle = unsafe { GetWindowLongPtrW(handle, GWL_EXSTYLE) };
+    print_last_error();
+
+    // unset appwindow: Remove from taskbar. set toolwindow: remove from alt-tab
+    let mut new_exstyle = exstyle | WS_EX_TOOLWINDOW.0 as isize;
+    new_exstyle &= !WS_EX_APPWINDOW.0 as isize;
+
+    unsafe {
+        SetWindowLongPtrW(handle, GWL_EXSTYLE, new_exstyle);
+    }
+    print_last_error();
+}
+
+fn print_last_error() {
+    let e = unsafe { GetLastError() };
+    if e.0 != 0 {
+        println!("{e:?}");
+    }
+    unsafe {
+        SetLastError(WIN32_ERROR(0));
     }
 }
