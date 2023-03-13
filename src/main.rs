@@ -6,10 +6,14 @@ use eframe::egui::{self, ScrollArea};
 use sidebar::dispose_sidebar;
 use sysinfo::{System, SystemExt};
 
+mod autostart;
+mod bytes_format;
 mod sidebar;
 mod system_info;
 
 // TODO: nvml-wrapper = "0.9.0"
+
+pub const UPDATE_INTERVAL_MILLIS: i64 = 1000;
 
 // Right Screen, Left side
 // pub const SIZE: egui::Vec2 = egui::Vec2 {
@@ -21,7 +25,7 @@ mod system_info;
 
 // Right Screen, Right side
 pub const SIZE: egui::Vec2 = egui::Vec2 {
-    x: 350.0,
+    x: 130.0,
     y: 1032.0,
 };
 pub const POS: egui::Pos2 = egui::Pos2 {
@@ -106,16 +110,24 @@ impl eframe::App for MyApp {
         }
 
         custom_window_frame(ctx, frame, "Sidebar", |ui| {
-            ui.label("This is just the contents of the window.");
-            ui.vertical_centered(|ui| {
-                ui.label("egui theme:");
-                egui::widgets::global_dark_light_mode_buttons(ui);
-                ui.label(format!("{}", self.framecount));
-            });
+            // ui.label("This is just the contents of the window.");
+            // ui.vertical_centered(|ui| {
+            //     ui.label("egui theme:");
+            //     egui::widgets::global_dark_light_mode_buttons(ui);
+            // });
+            ui.label(format!("{}", self.framecount));
             ScrollArea::vertical().show(ui, |ui| {
-                ui.label(system_info::get_system_text(self));
+                system_info::set_system_info_components(self, ui);
             });
-            ctx.request_repaint_after(std::time::Duration::from_millis(500));
+
+            // guess when the next update should occur.
+            ctx.request_repaint_after(
+                (chrono::Duration::milliseconds(UPDATE_INTERVAL_MILLIS)
+                    - (now - self.last_update_timestamp)
+                    + chrono::Duration::milliseconds(10))
+                .to_std()
+                .unwrap(),
+            );
         });
     }
 }
@@ -242,5 +254,3 @@ fn close_maximize_minimize(ui: &mut egui::Ui, frame: &mut eframe::Frame) {
     //     frame.set_minimized(true);
     // }
 }
-
-mod autostart;

@@ -1,10 +1,11 @@
-use human_bytes::human_bytes;
+use eframe::egui::{Label, RichText, Ui};
+use egui_extras::{Column, TableBuilder};
 use itertools::Itertools;
-use sysinfo::{CpuExt, DiskExt, NetworkExt, NetworksExt, ProcessExt, SystemExt};
+use sysinfo::{CpuExt, DiskExt, NetworkExt, NetworksExt, Pid, Process, ProcessExt, SystemExt};
 
-use crate::MyApp;
+use crate::{bytes_format::format_bytes, MyApp, SIZE};
 
-pub(crate) fn get_system_text(appdata: &MyApp) -> String {
+pub(crate) fn set_system_info_components(appdata: &MyApp, ui: &mut Ui) {
     // let mut text = format!("{:#?}", appdata.system_status)
     let mut text = String::new();
 
@@ -15,8 +16,8 @@ pub(crate) fn get_system_text(appdata: &MyApp) -> String {
             "{} {} {} / {}\n",
             disk.name().to_str().unwrap_or_default(),
             disk.mount_point().to_str().unwrap_or_default(),
-            human_bytes(disk.available_space() as f64),
-            human_bytes(disk.total_space() as f64),
+            format_bytes(disk.available_space() as f64),
+            format_bytes(disk.total_space() as f64),
         );
     }
 
@@ -31,8 +32,8 @@ pub(crate) fn get_system_text(appdata: &MyApp) -> String {
         text += &format!(
             "{}: {} ⬆ {} ⬇\n",
             interface_name,
-            human_bytes(data.transmitted() as f64),
-            human_bytes(data.received() as f64),
+            format_bytes(data.transmitted() as f64),
+            format_bytes(data.received() as f64),
         );
     }
 
@@ -44,8 +45,8 @@ pub(crate) fn get_system_text(appdata: &MyApp) -> String {
 
     text += &format!(
         "memory: {} / {}\n",
-        human_bytes(appdata.system_status.used_memory() as f64),
-        human_bytes(appdata.system_status.total_memory() as f64),
+        format_bytes(appdata.system_status.used_memory() as f64),
+        format_bytes(appdata.system_status.total_memory() as f64),
     );
 
     // Display system information:
@@ -68,31 +69,122 @@ pub(crate) fn get_system_text(appdata: &MyApp) -> String {
 
     // By CPU
     processes.sort_by(|a, b| b.1.cpu_usage().total_cmp(&a.1.cpu_usage()));
-    for (_pid, process) in processes.iter().take(7) {
-        text += &format!(
-            "{}, D: {}, R: {}, C: {:.0}%",
-            process.name(),
-            human_bytes(process.disk_usage().read_bytes as f64),
-            human_bytes(process.memory() as f64),
-            process.cpu_usage() / num_cpus as f32
-        );
-        text += "\n";
-    }
+    add_process_table(ui, 7, &processes, num_cpus, "Proc CPU");
+    ui.separator();
+
+    // for (_pid, process) in processes.iter().take(7) {
+    //     text += &format!(
+    //         "{}, D: {}, R: {}, C: {:.0}%",
+    //         process.name(),
+    //         format_bytes(process.disk_usage().read_bytes as f64),
+    //         format_bytes(process.memory() as f64),
+    //         process.cpu_usage() / num_cpus as f32
+    //     );
+    //     text += "\n";
+    // }
 
     text += "\n";
 
     // By Memory
     processes.sort_by(|a, b| b.1.memory().cmp(&a.1.memory()));
-    for (_pid, process) in processes.iter().take(7) {
-        text += &format!(
-            "{}, D: {}, R: {}, C: {:.0}%",
-            process.name(),
-            human_bytes(process.disk_usage().read_bytes as f64),
-            human_bytes(process.memory() as f64),
-            process.cpu_usage() / num_cpus as f32
-        );
-        text += "\n";
-    }
+    add_process_table(ui, 7, &processes, num_cpus, "Proc Ram");
+    ui.separator();
+    // for (_pid, process) in processes.iter().take(7) {
+    //     text += &format!(
+    //         "{}, D: {}, R: {}, C: {:.0}%",
+    //         process.name(),
+    //         format_bytes(process.disk_usage().read_bytes as f64),
+    //         format_bytes(process.memory() as f64),
+    //         process.cpu_usage() / num_cpus as f32
+    //     );
+    //     text += "\n";
+    // }
 
-    text
+    ui.label(text);
+}
+
+fn add_process_table(ui: &mut Ui, len: usize, p: &[(&Pid, &Process)], num_cpus: usize, name: &str) {
+    ui.push_id(name, |ui| {
+        let table = TableBuilder::new(ui)
+            // .auto_shrink([false, false])
+            .striped(true)
+            .column(Column::exact((SIZE.x - 10.0) / 2.0))
+            .columns(Column::exact((SIZE.x - 10.0) / 4.0), 2)
+            .header(10.0, |mut header| {
+                header.col(|ui| {
+                    ui.add(Label::new(RichText::new(name).small()).wrap(false));
+                    // ui.strong(name);
+                });
+                // header.col(|ui| {
+                //     ui.add(Label::new(RichText::new("Disk r").small()).wrap(false));
+                //     // ui.strong("Disk r");
+                // });
+                // header.col(|ui| {
+                //     ui.add(Label::new(RichText::new("Disk w").small()).wrap(false));
+                //     // ui.strong("Disk w");
+                // });
+                header.col(|ui| {
+                    ui.add(Label::new(RichText::new("RAM").small()).wrap(false));
+                    // ui.strong("RAM");
+                });
+                header.col(|ui| {
+                    ui.add(Label::new(RichText::new("CPU").small()).wrap(false));
+                    // ui.strong("CPU");
+                });
+            });
+        table.body(|body| {
+            body.rows(10.0, len, |row_index, mut row| {
+                let p = p[row_index].1;
+                row.col(|ui| {
+                    // ui.add(Label::new(p.name()).wrap(false));
+                    // ui.label(p.name());
+                    ui.add(Label::new(RichText::new(p.name()).small().strong()).wrap(false));
+                });
+                // row.col(|ui| {
+                //     ui.add(
+                //         Label::new(
+                //             RichText::new(format_bytes(p.disk_usage().read_bytes as f64)).small(),
+                //         )
+                //         .wrap(false),
+                //     );
+                //     // ui.add(Label::new(format_bytes(p.disk_usage().read_bytes as f64)).wrap(false));
+                //     // ui.label(format_bytes(p.disk_usage().read_bytes as f64));
+                // });
+                // row.col(|ui| {
+                //     ui.add(
+                //         Label::new(
+                //             RichText::new(format_bytes(p.disk_usage().written_bytes as f64)).small(),
+                //         )
+                //         .wrap(false),
+                //     );
+                //     // ui.add(Label::new(format_bytes(p.disk_usage().written_bytes as f64)).wrap(false));
+                //     // ui.label(format_bytes(p.disk_usage().read_bytes as f64));
+                // });
+                row.col(|ui| {
+                    ui.add(
+                        Label::new(
+                            RichText::new(format_bytes(p.memory() as f64))
+                                .small()
+                                .strong(),
+                        )
+                        .wrap(false),
+                    );
+                    // ui.add(Label::new(format_bytes(p.memory() as f64)).wrap(false));
+                    // ui.label(format_bytes(p.memory() as f64));
+                });
+                row.col(|ui| {
+                    ui.add(
+                        // Label::new(format!("{:.0}%", p.cpu_usage() / num_cpus as f32)).wrap(false),
+                        Label::new(
+                            RichText::new(format!("{:.0}%", p.cpu_usage() / num_cpus as f32))
+                                .small()
+                                .strong(),
+                        )
+                        .wrap(false),
+                    );
+                    // ui.label();
+                });
+            });
+        });
+    });
 }
