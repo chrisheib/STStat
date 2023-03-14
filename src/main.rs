@@ -1,13 +1,18 @@
 //! Show a custom window frame instead of the default OS window chrome decorations.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
+use std::{sync::Arc, thread};
+
 use chrono::{Duration, Local, NaiveDateTime};
+use circlevec::CircleVec;
 use eframe::egui::{self, ScrollArea};
+use ekko::{Ekko, EkkoResponse};
 use sidebar::dispose_sidebar;
 use sysinfo::{System, SystemExt};
 
 mod autostart;
 mod bytes_format;
+mod circlevec;
 mod sidebar;
 mod system_info;
 
@@ -36,11 +41,34 @@ pub const EDGE: u32 = windows::Win32::UI::Shell::ABE_RIGHT;
 
 fn main() -> Result<(), eframe::Error> {
     ctrlc::set_handler(move || {
-        println!("received Ctrl+C, removing appbar");
+        println!("received Ctrl+C, removing sidebar");
         dispose_sidebar();
         std::process::exit(0);
     })
     .expect("Error setting Ctrl-C handler");
+
+    // let (tx, rx): (Sender<std::time::Duration>, Receiver<std::time::Duration>) = mpsc::channel();
+    // let (mut prod, cons) = SharedRb::<u128, Vec<_>>::new(100).split();
+    let ping_buffer = CircleVec::<u128>::new(100);
+    let thread_pb = ping_buffer.clone();
+
+    // Each thread will send its id via the channel
+    thread::spawn(move || {
+        let ekko = Ekko::with_target([8, 8, 8, 8]).unwrap();
+        loop {
+            if let EkkoResponse::Destination(res) = ekko.send(32).unwrap() {
+                // tx.send(res.elapsed).unwrap();
+                // println!("Ping answer received: {:?}", res.elapsed);
+                // if prod.free_len() = 0 {
+                //     // prod.
+                // }
+                thread_pb.add(res.elapsed.as_millis());
+                thread::sleep(std::time::Duration::from_secs(1) - res.elapsed)
+            } else {
+                thread::sleep(std::time::Duration::from_secs(1))
+            };
+        }
+    });
 
     let options = eframe::NativeOptions {
         // Hide the OS-specific "chrome" around the window:
@@ -60,7 +88,12 @@ fn main() -> Result<(), eframe::Error> {
         Box::new(|_cc| {
             Box::new(MyApp {
                 system_status: System::new_all(),
-                ..Default::default()
+                ping_buffer,
+                firstupdate: Default::default(),
+                create_frame: Default::default(),
+                framecount: Default::default(),
+                last_update_timestamp: Default::default(),
+                last_ping_time: Default::default(),
             })
         }),
     )?;
@@ -70,13 +103,16 @@ fn main() -> Result<(), eframe::Error> {
     Ok(())
 }
 
-#[derive(Default)]
+// type PingBuffer = Consumer<u128, Arc<SharedRb<u128, Vec<MaybeUninit<u128>>>>>;
+
 pub struct MyApp {
     pub firstupdate: bool,
     pub create_frame: u64,
     pub framecount: u64,
     pub system_status: System,
     pub last_update_timestamp: NaiveDateTime,
+    pub ping_buffer: Arc<CircleVec<u128>>,
+    pub last_ping_time: std::time::Duration,
 }
 
 impl eframe::App for MyApp {
@@ -128,6 +164,12 @@ impl eframe::App for MyApp {
                 .to_std()
                 .unwrap(),
             );
+
+            // self.last_ping_time = self.ping_channel.try_recv().unwrap_or(self.last_ping_time);
+            // ui.label(format!(
+            //     "Last ping: {:?}ms",
+            //     self.last_ping_time.as_millis()
+            // ));
         });
     }
 }

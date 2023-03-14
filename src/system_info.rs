@@ -1,4 +1,7 @@
-use eframe::egui::{Label, RichText, Ui};
+use eframe::egui::{
+    plot::{Line, Plot, PlotPoints},
+    Label, RichText, Ui,
+};
 use egui_extras::{Column, TableBuilder};
 use itertools::Itertools;
 use sysinfo::{CpuExt, DiskExt, NetworkExt, NetworksExt, Pid, Process, ProcessExt, SystemExt};
@@ -101,6 +104,28 @@ pub(crate) fn set_system_info_components(appdata: &MyApp, ui: &mut Ui) {
     // }
 
     ui.label(text);
+    show_ping(appdata, ui);
+}
+
+fn show_ping(appdata: &MyApp, ui: &mut Ui) {
+    let pings = appdata.ping_buffer.read();
+    let last_ping = pings.last().copied().unwrap_or_default();
+    let line = Line::new(
+        (0..appdata.ping_buffer.capacity())
+            .map(|i| {
+                [i as f64, {
+                    if i < pings.len() {
+                        pings[i] as f64
+                    } else {
+                        0.0
+                    }
+                }]
+            })
+            .collect::<PlotPoints>(),
+    );
+
+    ui.label(format!("8.8.8.8: {last_ping:.0} ms"));
+    add_graph("ping", ui, line);
 }
 
 fn add_process_table(ui: &mut Ui, len: usize, p: &[(&Pid, &Process)], num_cpus: usize, name: &str) {
@@ -187,4 +212,21 @@ fn add_process_table(ui: &mut Ui, len: usize, p: &[(&Pid, &Process)], num_cpus: 
             });
         });
     });
+}
+
+fn add_graph(id: &str, ui: &mut Ui, line: Line) {
+    Plot::new(id)
+        .show_axes([true, true])
+        .label_formatter(|_, _| "".to_string())
+        .allow_drag(false)
+        .allow_zoom(false)
+        .allow_scroll(false)
+        // .center_x_axis(self.center_x_axis)
+        // .center_x_axis(self.center_y_axis)
+        .width(SIZE.x - 10.0)
+        .height(50.0)
+        .include_y(0.0)
+        .include_y(50.0)
+        // .data_aspect(1.0)
+        .show(ui, |plot_ui| plot_ui.line(line));
 }
