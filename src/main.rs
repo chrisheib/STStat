@@ -83,7 +83,7 @@ fn main() -> Result<(), eframe::Error> {
     };
 
     eframe::run_native(
-        "Sidebar", // unused title
+        "RS_Sidebar", // unused title
         options,
         Box::new(|_cc| {
             Box::new(MyApp {

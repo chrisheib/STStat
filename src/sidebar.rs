@@ -1,18 +1,23 @@
 use std::{mem, ops::DerefMut, os::raw::c_void, sync::RwLock};
 
 use lazy_static::lazy_static;
-use windows::Win32::{
-    Foundation::{GetLastError, SetLastError, HWND, LPARAM, RECT, WIN32_ERROR},
-    Graphics::Dwm::{
-        DwmSetWindowAttribute, DWMNCRENDERINGPOLICY, DWMNCRP_ENABLED, DWMWA_DISALLOW_PEEK,
-        DWMWA_EXCLUDED_FROM_PEEK,
-    },
-    UI::{
-        Shell::{
-            SHAppBarMessage, ABE_LEFT, ABM_NEW, ABM_QUERYPOS, ABM_REMOVE, ABM_SETPOS, APPBARDATA,
+use windows::{
+    w,
+    Win32::{
+        Foundation::{GetLastError, SetLastError, HWND, LPARAM, RECT, WIN32_ERROR},
+        Graphics::Dwm::{
+            DwmSetWindowAttribute, DWMNCRENDERINGPOLICY, DWMNCRP_ENABLED, DWMWA_DISALLOW_PEEK,
+            DWMWA_EXCLUDED_FROM_PEEK,
         },
-        WindowsAndMessaging::{
-            GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+        UI::{
+            Shell::{
+                SHAppBarMessage, ABE_LEFT, ABM_NEW, ABM_QUERYPOS, ABM_REMOVE, ABM_SETPOS,
+                APPBARDATA,
+            },
+            WindowsAndMessaging::{
+                EnumWindows, FindWindowW, GetWindowLongPtrW, GetWindowThreadProcessId,
+                SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+            },
         },
     },
 };
@@ -20,22 +25,56 @@ use windows::Win32::{
 use crate::{EDGE, POS, SIZE};
 
 lazy_static! {
-    static ref STATIC_HWND: RwLock<isize> = 0.into();
+    static ref STATIC_HWND: RwLock<HWND> = HWND(0).into();
 }
 
+// #[no_mangle]
+// pub unsafe extern "system" fn cb(hwnd: HWND, lparam: LPARAM) -> windows::Win32::Foundation::BOOL {
+//     let cbi_addr = lparam.0 as *mut CallbackInfo;
+//     let mut cbi = &mut *cbi_addr;
+//     let win_pid = GetWindowThreadProcessId(hwnd, None);
+//     if win_pid == cbi.mypid {
+//         println!("FOUND: cbi: {cbi:?}, {hwnd:?}, pid: {win_pid}");
+//         cbi.return_hwnd = Some(hwnd);
+//         return windows::Win32::Foundation::BOOL(0);
+//     }
+
+//     println!("cbi: {cbi:?}, {hwnd:?}, pid: {win_pid}");
+//     windows::Win32::Foundation::BOOL(1)
+// }
+
+// #[derive(Debug)]
+// struct CallbackInfo {
+//     mypid: u32,
+//     return_hwnd: Option<HWND>,
+// }
+
 pub(crate) fn setup_sidebar() {
-    let active_window = active_win_pos_rs::get_active_window().expect("Active window should exist");
-    println!("active window: {active_window:#?}");
-    let handle = active_window
-        .window_id
-        .replace("HWND(", "")
-        .replace(')', "")
-        .parse::<isize>()
-        .expect("handle should be valid isize");
+    // find handle: enum active windows, find window with my process id
+    // let pid = std::process::id();
 
-    *STATIC_HWND.write().unwrap().deref_mut() = handle;
+    // let mut cbi = CallbackInfo {
+    //     mypid: pid,
+    //     return_hwnd: None,
+    // };
 
-    let hwnd = HWND(handle);
+    // unsafe {
+    //     EnumWindows(Some(cb), LPARAM(&mut cbi as *mut CallbackInfo as isize));
+    // }
+
+    let hwnd = unsafe { FindWindowW(None, w!("RS_Sidebar")) };
+    dbg!(hwnd);
+
+    // let active_window = active_win_pos_rs::get_active_window().expect("Active window should exist");
+    // println!("active window: {active_window:#?}");
+    // let handle = active_window
+    //     .window_id
+    //     .replace("HWND(", "")
+    //     .replace(')', "")
+    //     .parse::<isize>()
+    //     .expect("handle should be valid isize");
+
+    *STATIC_HWND.write().unwrap().deref_mut() = hwnd;
 
     let rect = RECT {
         left: POS.x as i32,
@@ -83,7 +122,7 @@ pub(crate) fn setup_sidebar() {
 }
 
 pub fn dispose_sidebar() {
-    let hwnd = HWND(*STATIC_HWND.read().unwrap());
+    let hwnd = *STATIC_HWND.read().unwrap();
 
     let rect = RECT {
         left: 0,
