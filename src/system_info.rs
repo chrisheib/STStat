@@ -1,12 +1,39 @@
+use std::ops::Add;
+
 use eframe::egui::{
     plot::{Line, Plot, PlotPoints},
     Label, RichText, Ui,
 };
 use egui_extras::{Column, TableBuilder};
 use itertools::Itertools;
-use sysinfo::{CpuExt, DiskExt, NetworkExt, NetworksExt, Pid, Process, ProcessExt, SystemExt};
+use sysinfo::{CpuExt, DiskExt, NetworkExt, NetworksExt, ProcessExt, SystemExt};
 
 use crate::{bytes_format::format_bytes, MyApp, SIZE};
+
+#[derive(Default, Debug)]
+struct Proc {
+    name: String,
+    cpu: f32,
+    memory: u64,
+    disk_read: u64,
+    disk_write: u64,
+    count: u64,
+}
+
+impl Add for Proc {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self {
+            name: self.name,
+            cpu: self.cpu + rhs.cpu,
+            memory: self.memory + rhs.memory,
+            disk_read: self.disk_read + rhs.disk_read,
+            disk_write: self.disk_write + rhs.disk_write,
+            count: self.count + rhs.count,
+        }
+    }
+}
 
 pub(crate) fn set_system_info_components(appdata: &MyApp, ui: &mut Ui) {
     // let mut text = format!("{:#?}", appdata.system_status)
@@ -67,49 +94,48 @@ pub(crate) fn set_system_info_components(appdata: &MyApp, ui: &mut Ui) {
         appdata.system_status.global_cpu_info().cpu_usage()
     );
 
+    show_processes(appdata, ui, num_cpus, &mut text);
+    show_ping(appdata, ui);
+    ui.label(text);
+}
+
+fn show_processes(appdata: &MyApp, ui: &mut Ui, num_cpus: usize, text: &mut String) {
     // Processes
-    let mut processes = appdata.system_status.processes().iter().collect_vec();
+    let mut processes = appdata
+        .system_status
+        .processes()
+        .values()
+        .map(|p| Proc {
+            name: p.name().to_string().replace(".exe", ""),
+            cpu: p.cpu_usage(),
+            memory: p.memory(),
+            disk_read: p.disk_usage().read_bytes,
+            disk_write: p.disk_usage().written_bytes,
+            count: 1,
+        })
+        .sorted_by_key(|p| p.name.clone())
+        .group_by(|p| p.name.clone())
+        .into_iter()
+        .map(|(_name, group)| group.reduce(|acc, v| acc + v).unwrap())
+        .collect_vec();
 
     // By CPU
-    processes.sort_by(|a, b| b.1.cpu_usage().total_cmp(&a.1.cpu_usage()));
+    processes.sort_by(|a, b| b.cpu.total_cmp(&a.cpu));
     add_process_table(ui, 7, &processes, num_cpus, "Proc CPU");
     ui.separator();
 
-    // for (_pid, process) in processes.iter().take(7) {
-    //     text += &format!(
-    //         "{}, D: {}, R: {}, C: {:.0}%",
-    //         process.name(),
-    //         format_bytes(process.disk_usage().read_bytes as f64),
-    //         format_bytes(process.memory() as f64),
-    //         process.cpu_usage() / num_cpus as f32
-    //     );
-    //     text += "\n";
-    // }
-
-    text += "\n";
+    *text += "\n";
 
     // By Memory
-    processes.sort_by(|a, b| b.1.memory().cmp(&a.1.memory()));
+    processes.sort_by(|a, b| b.memory.cmp(&a.memory));
     add_process_table(ui, 7, &processes, num_cpus, "Proc Ram");
     ui.separator();
-    // for (_pid, process) in processes.iter().take(7) {
-    //     text += &format!(
-    //         "{}, D: {}, R: {}, C: {:.0}%",
-    //         process.name(),
-    //         format_bytes(process.disk_usage().read_bytes as f64),
-    //         format_bytes(process.memory() as f64),
-    //         process.cpu_usage() / num_cpus as f32
-    //     );
-    //     text += "\n";
-    // }
-
-    ui.label(text);
-    show_ping(appdata, ui);
 }
 
 fn show_ping(appdata: &MyApp, ui: &mut Ui) {
     let pings = appdata.ping_buffer.read();
     let last_ping = pings.last().copied().unwrap_or_default();
+    let max_ping = pings.iter().max().copied().unwrap_or_default();
     let line = Line::new(
         (0..appdata.ping_buffer.capacity())
             .map(|i| {
@@ -124,11 +150,11 @@ fn show_ping(appdata: &MyApp, ui: &mut Ui) {
             .collect::<PlotPoints>(),
     );
 
-    ui.label(format!("8.8.8.8: {last_ping:.0} ms"));
+    ui.label(format!("M: {max_ping:.0}ms, C: {last_ping:.0} ms"));
     add_graph("ping", ui, line);
 }
 
-fn add_process_table(ui: &mut Ui, len: usize, p: &[(&Pid, &Process)], num_cpus: usize, name: &str) {
+fn add_process_table(ui: &mut Ui, len: usize, p: &[Proc], num_cpus: usize, name: &str) {
     ui.push_id(name, |ui| {
         let table = TableBuilder::new(ui)
             // .auto_shrink([false, false])
@@ -159,11 +185,26 @@ fn add_process_table(ui: &mut Ui, len: usize, p: &[(&Pid, &Process)], num_cpus: 
             });
         table.body(|body| {
             body.rows(10.0, len, |row_index, mut row| {
-                let p = p[row_index].1;
+                let p = &p[row_index];
                 row.col(|ui| {
                     // ui.add(Label::new(p.name()).wrap(false));
                     // ui.label(p.name());
-                    ui.add(Label::new(RichText::new(p.name()).small().strong()).wrap(false));
+                    ui.add(
+                        Label::new(
+                            RichText::new(format!(
+                                "{}{}",
+                                p.name,
+                                if p.count > 1 {
+                                    format!(" ×{}", p.count)
+                                } else {
+                                    "".to_string()
+                                }
+                            ))
+                            .small()
+                            .strong(),
+                        )
+                        .wrap(false),
+                    );
                 });
                 // row.col(|ui| {
                 //     ui.add(
@@ -188,7 +229,7 @@ fn add_process_table(ui: &mut Ui, len: usize, p: &[(&Pid, &Process)], num_cpus: 
                 row.col(|ui| {
                     ui.add(
                         Label::new(
-                            RichText::new(format_bytes(p.memory() as f64))
+                            RichText::new(format_bytes(p.memory as f64))
                                 .small()
                                 .strong(),
                         )
@@ -201,7 +242,7 @@ fn add_process_table(ui: &mut Ui, len: usize, p: &[(&Pid, &Process)], num_cpus: 
                     ui.add(
                         // Label::new(format!("{:.0}%", p.cpu_usage() / num_cpus as f32)).wrap(false),
                         Label::new(
-                            RichText::new(format!("{:.0}%", p.cpu_usage() / num_cpus as f32))
+                            RichText::new(format!("{:.0}%", p.cpu / num_cpus as f32))
                                 .small()
                                 .strong(),
                         )
@@ -221,12 +262,15 @@ fn add_graph(id: &str, ui: &mut Ui, line: Line) {
         .allow_drag(false)
         .allow_zoom(false)
         .allow_scroll(false)
-        // .center_x_axis(self.center_x_axis)
-        // .center_x_axis(self.center_y_axis)
+        .allow_boxed_zoom(false)
+        .allow_double_click_reset(false)
+        .show_x(false)
+        .show_y(false)
+        .x_axis_formatter(|_, _| String::new())
+        .y_axis_formatter(|_, _| String::new())
         .width(SIZE.x - 10.0)
-        .height(50.0)
+        .height(30.0)
         .include_y(0.0)
         .include_y(50.0)
-        // .data_aspect(1.0)
         .show(ui, |plot_ui| plot_ui.line(line));
 }
