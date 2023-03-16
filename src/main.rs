@@ -81,6 +81,7 @@ fn main() -> Result<(), eframe::Error> {
         min_window_size: Some(egui::vec2(100.0, 100.0)),
         initial_window_size: Some(SIZE),
         initial_window_pos: Some(POS),
+        drag_and_drop_support: false,
         vsync: false,
         ..Default::default()
     };
