@@ -15,8 +15,8 @@ use windows::{
                 APPBARDATA,
             },
             WindowsAndMessaging::{
-                EnumWindows, FindWindowW, GetWindowLongPtrW, GetWindowThreadProcessId,
-                SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+                FindWindowW, GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_APPWINDOW,
+                WS_EX_TOOLWINDOW,
             },
         },
     },
@@ -25,7 +25,7 @@ use windows::{
 use crate::{EDGE, POS, SIZE};
 
 lazy_static! {
-    static ref STATIC_HWND: RwLock<HWND> = HWND(0).into();
+    pub static ref STATIC_HWND: RwLock<HWND> = HWND(0).into();
 }
 
 // #[no_mangle]

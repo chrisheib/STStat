@@ -18,6 +18,6 @@ ekko = "0.7.2"
 itertools = "0.10"
 lazy_static = "1.4"
 sysinfo = "0.28"
-windows = { version = "0.46", features = ["Win32_UI_Shell", "Win32_Foundation", "Win32_Graphics_Dwm", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.46", features = ["Win32_UI_Shell", "Win32_Foundation", "Win32_Graphics_Dwm", "Win32_UI_WindowsAndMessaging", "Win32_System_Performance", "Win32_Storage_FileSystem"] }
 winreg = "0.11"
 # slint = "0.3.5"

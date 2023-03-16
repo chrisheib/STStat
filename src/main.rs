@@ -9,12 +9,15 @@ use eframe::egui::{self, ScrollArea};
 use ekko::{Ekko, EkkoResponse};
 use sidebar::dispose_sidebar;
 use sysinfo::{System, SystemExt};
+use system_info::{init_system, refresh};
 
 mod autostart;
 mod bytes_format;
 mod circlevec;
 mod sidebar;
 mod system_info;
+
+// On read problems, run: lodctr /r
 
 // TODO: nvml-wrapper = "0.9.0"
 
@@ -82,20 +85,24 @@ fn main() -> Result<(), eframe::Error> {
         ..Default::default()
     };
 
+    let mut appstate = MyApp {
+        system_status: System::new_all(),
+        ping_buffer,
+        firstupdate: false,
+        create_frame: 0,
+        framecount: 0,
+        last_update_timestamp: Default::default(),
+        last_ping_time: Default::default(),
+        windows_performance_query_handle: 0,
+        disk_time_value_handle_map: Default::default(),
+    };
+
+    init_system(&mut appstate);
+
     eframe::run_native(
         "RS_Sidebar", // unused title
         options,
-        Box::new(|_cc| {
-            Box::new(MyApp {
-                system_status: System::new_all(),
-                ping_buffer,
-                firstupdate: Default::default(),
-                create_frame: Default::default(),
-                framecount: Default::default(),
-                last_update_timestamp: Default::default(),
-                last_ping_time: Default::default(),
-            })
-        }),
+        Box::new(|_cc| Box::new(appstate)),
     )?;
 
     dispose_sidebar();
@@ -113,6 +120,8 @@ pub struct MyApp {
     pub last_update_timestamp: NaiveDateTime,
     pub ping_buffer: Arc<CircleVec<u128>>,
     pub last_ping_time: std::time::Duration,
+    pub windows_performance_query_handle: isize,
+    pub disk_time_value_handle_map: Vec<(String, isize, f64)>,
 }
 
 impl eframe::App for MyApp {
@@ -123,7 +132,7 @@ impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         let now = Local::now().naive_local();
         if now - self.last_update_timestamp > Duration::milliseconds(1000) {
-            self.system_status.refresh_all();
+            refresh(self);
             self.last_update_timestamp = now;
         }
 
