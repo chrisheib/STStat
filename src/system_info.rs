@@ -134,9 +134,33 @@ fn show_ping(appdata: &MyApp, ui: &mut Ui) {
 
 fn show_cpu(appdata: &MyApp, ui: &mut Ui) {
     ui.spacing_mut().interact_size = [15.0, 12.0].into();
+
+    let cur_mem = appdata.system_status.used_memory() as f32;
+    let total_mem = appdata.system_status.total_memory() as f32;
+
     let cpu = appdata.cpu_buffer.read();
     let last_cpu = cpu.last().copied().unwrap_or_default();
-    ui.label(format!("CPU: {last_cpu:.1}%"));
+
+    ui.add(
+        ProgressBar::new(last_cpu / 100.0).text(
+            RichText::new(format!("CPU: {last_cpu:.1}%",))
+                .small()
+                .strong(),
+        ),
+    );
+
+    ui.add(
+        ProgressBar::new(cur_mem / total_mem).text(
+            RichText::new(format!(
+                "RAM: {} / {}",
+                format_bytes(cur_mem as f64),
+                format_bytes(total_mem as f64)
+            ))
+            .small()
+            .strong(),
+        ),
+    );
+
     Grid::new("cpu_grid")
         .num_columns(2)
         .spacing([2.0, 2.0])
