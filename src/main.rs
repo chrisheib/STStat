@@ -53,6 +53,7 @@ fn main() -> Result<(), eframe::Error> {
     // let (tx, rx): (Sender<std::time::Duration>, Receiver<std::time::Duration>) = mpsc::channel();
     // let (mut prod, cons) = SharedRb::<u128, Vec<_>>::new(100).split();
     let ping_buffer = CircleVec::<u128>::new(100);
+    let cpu_buffer = CircleVec::<f32>::new(100);
     let thread_pb = ping_buffer.clone();
 
     // Each thread will send its id via the channel
@@ -93,9 +94,11 @@ fn main() -> Result<(), eframe::Error> {
         create_frame: 0,
         framecount: 0,
         last_update_timestamp: Default::default(),
+        next_update: Default::default(),
         last_ping_time: Default::default(),
         windows_performance_query_handle: 0,
         disk_time_value_handle_map: Default::default(),
+        cpu_buffer,
     };
 
     init_system(&mut appstate);
@@ -119,7 +122,9 @@ pub struct MyApp {
     pub framecount: u64,
     pub system_status: System,
     pub last_update_timestamp: NaiveDateTime,
+    pub next_update: NaiveDateTime,
     pub ping_buffer: Arc<CircleVec<u128>>,
+    pub cpu_buffer: Arc<CircleVec<f32>>,
     pub last_ping_time: std::time::Duration,
     pub windows_performance_query_handle: isize,
     pub disk_time_value_handle_map: Vec<(String, isize, f64)>,
@@ -132,9 +137,11 @@ impl eframe::App for MyApp {
 
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         let now = Local::now().naive_local();
-        if now - self.last_update_timestamp > Duration::milliseconds(1000) {
+        if now > self.next_update {
             refresh(self);
             self.last_update_timestamp = now;
+            self.next_update =
+                now + Duration::milliseconds(1000i64 - now.timestamp_subsec_millis() as i64);
         }
 
         self.framecount += 1;
@@ -166,13 +173,13 @@ impl eframe::App for MyApp {
                 system_info::set_system_info_components(self, ui);
             });
 
+            let time_to_next_second = 1000 - chrono::Local::now().timestamp_subsec_millis();
+
             // guess when the next update should occur.
             ctx.request_repaint_after(
-                (chrono::Duration::milliseconds(UPDATE_INTERVAL_MILLIS)
-                    - (now - self.last_update_timestamp)
-                    + chrono::Duration::milliseconds(10))
-                .to_std()
-                .unwrap(),
+                (chrono::Duration::milliseconds(time_to_next_second as i64 + 5))
+                    .to_std()
+                    .unwrap(),
             );
 
             // self.last_ping_time = self.ping_channel.try_recv().unwrap_or(self.last_ping_time);

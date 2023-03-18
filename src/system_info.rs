@@ -1,15 +1,14 @@
-use std::ops::Add;
-
+use crate::{bytes_format::format_bytes, sidebar::STATIC_HWND, MyApp, SIZE};
 use eframe::{
     egui::{
         plot::{Line, Plot, PlotPoints},
         Grid, Label, Layout, ProgressBar, RichText, Ui,
     },
-    emath::Align::Max,
-    epaint::Rect,
+    emath::Align::{self, Max},
 };
 use egui_extras::{Column, TableBuilder};
 use itertools::Itertools;
+use std::ops::Add;
 use sysinfo::{CpuExt, DiskExt, NetworkExt, NetworksExt, ProcessExt, SystemExt};
 use windows::{
     core::{decode_utf8_char, PCWSTR, PWSTR},
@@ -20,8 +19,6 @@ use windows::{
         PERF_DETAIL_ADVANCED,
     },
 };
-
-use crate::{bytes_format::format_bytes, sidebar::STATIC_HWND, MyApp, SIZE};
 
 #[derive(Default, Debug)]
 struct Proc {
@@ -48,7 +45,15 @@ impl Add for Proc {
     }
 }
 
-pub(crate) fn set_system_info_components(appdata: &MyApp, ui: &mut Ui) {
+pub fn set_system_info_components(appdata: &MyApp, ui: &mut Ui) {
+    let now = chrono::Local::now();
+    // ui.heading(text)
+
+    // ui.heading(format!("{}", now.format("%d.%m.%Y")));
+    ui.vertical_centered(|ui| {
+        ui.heading(RichText::new(now.format("%H:%M:%S").to_string()).strong())
+    });
+    ui.separator();
     let mut text = String::new();
 
     // Network interfaces name, data received and data transmitted:
@@ -73,23 +78,17 @@ pub(crate) fn set_system_info_components(appdata: &MyApp, ui: &mut Ui) {
         format_bytes(appdata.system_status.total_memory() as f64),
     );
 
-    // Number of CPUs:
-    let num_cpus = appdata.system_status.cpus().len();
-    text += &format!(
-        "NB CPUs: {num_cpus}\nusage: {:.1} %",
-        appdata.system_status.global_cpu_info().cpu_usage()
-    );
-
-    show_processes(appdata, ui, num_cpus, &mut text);
+    show_cpu(appdata, ui);
+    show_processes(appdata, ui);
     show_ping(appdata, ui);
+    add_drives_section(appdata, ui);
 
     ui.label(text);
-
-    add_drives_section(appdata, ui);
     ui.separator();
 }
 
-fn show_processes(appdata: &MyApp, ui: &mut Ui, num_cpus: usize, text: &mut String) {
+fn show_processes(appdata: &MyApp, ui: &mut Ui) {
+    let num_cpus = appdata.system_status.cpus().len();
     // Processes
     let mut processes = appdata
         .system_status
@@ -112,14 +111,10 @@ fn show_processes(appdata: &MyApp, ui: &mut Ui, num_cpus: usize, text: &mut Stri
     // By CPU
     processes.sort_by(|a, b| b.cpu.total_cmp(&a.cpu));
     add_process_table(ui, 7, &processes, num_cpus, "Proc CPU");
-    ui.separator();
-
-    *text += "\n";
 
     // By Memory
     processes.sort_by(|a, b| b.memory.cmp(&a.memory));
     add_process_table(ui, 7, &processes, num_cpus, "Proc Ram");
-    ui.separator();
 }
 
 fn show_ping(appdata: &MyApp, ui: &mut Ui) {
@@ -128,20 +123,47 @@ fn show_ping(appdata: &MyApp, ui: &mut Ui) {
     let max_ping = pings.iter().max().copied().unwrap_or_default();
     let line = Line::new(
         (0..appdata.ping_buffer.capacity())
-            .map(|i| {
-                [i as f64, {
-                    if i < pings.len() {
-                        pings[i] as f64
-                    } else {
-                        0.0
-                    }
-                }]
-            })
+            .map(|i| [i as f64, { pings[i] as f64 }])
             .collect::<PlotPoints>(),
     );
 
     ui.label(format!("M: {max_ping:.0}ms, C: {last_ping:.0} ms"));
-    add_graph("ping", ui, line);
+    add_graph("ping", ui, line, 50.0);
+    ui.separator();
+}
+
+fn show_cpu(appdata: &MyApp, ui: &mut Ui) {
+    ui.spacing_mut().interact_size = [15.0, 12.0].into();
+    let cpu = appdata.cpu_buffer.read();
+    let last_cpu = cpu.last().copied().unwrap_or_default();
+    ui.label(format!("CPU: {last_cpu:.1}%"));
+    Grid::new("cpu_grid")
+        .num_columns(2)
+        .spacing([2.0, 2.0])
+        .striped(true)
+        .show(ui, |ui| {
+            for cpu_chunk in appdata.system_status.cpus().chunks(2) {
+                for cpu in cpu_chunk {
+                    let usage = cpu.cpu_usage();
+                    ui.add(
+                        ProgressBar::new(usage / 100.0)
+                            .desired_width(SIZE.x / 2.0 - 5.0)
+                            .text(RichText::new(format!("{usage:.0}%")).small().strong()),
+                    );
+                }
+                ui.end_row();
+            }
+        });
+
+    let line = Line::new(
+        (0..appdata.ping_buffer.capacity())
+            .map(|i| [i as f64, { cpu[i] as f64 }])
+            .collect::<PlotPoints>(),
+    );
+
+    add_graph("cpu", ui, line, 100.5);
+
+    ui.separator();
 }
 
 fn add_process_table(ui: &mut Ui, len: usize, p: &[Proc], num_cpus: usize, name: &str) {
@@ -207,9 +229,10 @@ fn add_process_table(ui: &mut Ui, len: usize, p: &[Proc], num_cpus: usize, name:
             });
         });
     });
+    ui.separator();
 }
 
-fn add_graph(id: &str, ui: &mut Ui, line: Line) {
+fn add_graph(id: &str, ui: &mut Ui, line: Line, max_y: f64) {
     Plot::new(id)
         .show_axes([true, true])
         .label_formatter(|_, _| "".to_string())
@@ -225,15 +248,15 @@ fn add_graph(id: &str, ui: &mut Ui, line: Line) {
         .width(SIZE.x - 10.0)
         .height(30.0)
         .include_y(0.0)
-        .include_y(50.0)
+        .include_y(max_y)
         .show(ui, |plot_ui| plot_ui.line(line));
 }
 
 fn add_drives_section(appdata: &MyApp, ui: &mut Ui) {
     ui.spacing_mut().interact_size = [15.0, 12.0].into();
-    Grid::new("my_grid")
+    Grid::new("drive_grid")
         .num_columns(2)
-        .spacing([15.0, 4.0])
+        .spacing([2.0, 4.0])
         .striped(true)
         .show(ui, |ui| {
             for d in appdata.system_status.disks() {
@@ -244,35 +267,32 @@ fn add_drives_section(appdata: &MyApp, ui: &mut Ui) {
                     .find(|(s, _, _)| s == &mount)
                     .unwrap();
 
-                let pos = ui.next_widget_position();
-                ui.put(
-                    Rect {
-                        min: [pos.x - 20.0, pos.y - 5.0].into(),
-                        max: [pos.x + 15.0, pos.y + 5.0].into(),
-                    },
-                    Label::new(
-                        RichText::new(format!("{mount} {value:.1}%"))
-                            .small()
-                            .strong(),
-                    ),
-                );
-                ui.add(
-                    ProgressBar::new(
-                        (d.total_space() - d.available_space()) as f32 / d.total_space() as f32,
-                    )
-                    .desired_width(SIZE.x / 1.85)
-                    .text(
-                        RichText::new(format!(
-                            "Free: {}",
-                            format_bytes(d.available_space() as f64),
-                        ))
+                ui.add(Label::new(
+                    RichText::new(format!("{mount} {value:.1}%"))
                         .small()
                         .strong(),
-                    ),
-                );
+                ));
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    ui.add_space(15.0);
+                    ui.add(
+                        ProgressBar::new(
+                            (d.total_space() - d.available_space()) as f32 / d.total_space() as f32,
+                        )
+                        .desired_width(SIZE.x / 1.6)
+                        .text(
+                            RichText::new(format!(
+                                "Free: {}",
+                                format_bytes(d.available_space() as f64),
+                            ))
+                            .small()
+                            .strong(),
+                        ),
+                    )
+                });
                 ui.end_row();
             }
         });
+    ui.separator();
 }
 
 fn refresh_disk_io_time(appdata: &mut MyApp) {
@@ -288,6 +308,8 @@ fn refresh_disk_io_time(appdata: &mut MyApp) {
 }
 
 pub fn init_system(appdata: &mut MyApp) {
+    // get_core_efficiency_data();
+
     // open_performance_browser();
     appdata.system_status.refresh_disks_list();
 
@@ -325,6 +347,23 @@ pub fn init_system(appdata: &mut MyApp) {
         ));
     }
 }
+
+// fn get_core_efficiency_data() {
+//     unsafe {
+//         let mut req_len = 0;
+//         GetSystemCpuSetInformation(None, 0, &mut req_len, None, 0);
+
+//         let mut sys_inf = SYSTEM_CPU_SET_INFORMATION::default();
+//         dbg!(GetSystemCpuSetInformation(
+//             Some(&mut sys_inf),
+//             dbg!(req_len),
+//             &mut req_len,
+//             None,
+//             0
+//         ));
+//         dbg!(sys_inf.Anonymous.CpuSet.EfficiencyClass);
+//     }
+// }
 
 #[allow(dead_code)]
 fn open_performance_browser() {
@@ -372,6 +411,19 @@ fn convert_to_pcwstr(s: &str) -> PCWSTR {
 }
 
 pub fn refresh(appdata: &mut MyApp) {
-    appdata.system_status.refresh_all();
+    refresh_cpu(appdata);
+
+    appdata.system_status.refresh_disks();
+    appdata.system_status.refresh_memory();
+    appdata.system_status.refresh_networks();
+    appdata.system_status.refresh_processes();
+
     refresh_disk_io_time(appdata);
+}
+
+fn refresh_cpu(appdata: &mut MyApp) {
+    appdata.system_status.refresh_cpu();
+    appdata
+        .cpu_buffer
+        .add(appdata.system_status.global_cpu_info().cpu_usage());
 }
