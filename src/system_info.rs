@@ -8,8 +8,11 @@ use eframe::{
 };
 use egui_extras::{Column, TableBuilder};
 use itertools::Itertools;
+use nvml_wrapper::enum_wrappers::device::{Clock, TemperatureSensor};
+use serde::Deserialize;
 use std::ops::Add;
 use sysinfo::{CpuExt, DiskExt, NetworkExt, NetworksExt, ProcessExt, SystemExt};
+// use systemstat::{Platform, System};
 use windows::{
     core::{decode_utf8_char, PCWSTR, PWSTR},
     w,
@@ -72,11 +75,34 @@ pub fn set_system_info_components(appdata: &MyApp, ui: &mut Ui) {
         );
     }
 
+    // text += &format!(
+    //     "memory: \n{} / {}\n",
+    //     format_bytes(appdata.system_status.used_memory() as f64),
+    //     format_bytes(appdata.system_status.total_memory() as f64),
+    // );
+    let gpu = appdata.nvid_info.device_by_index(0).unwrap();
+
     text += &format!(
-        "memory: \n{} / {}\n",
-        format_bytes(appdata.system_status.used_memory() as f64),
-        format_bytes(appdata.system_status.total_memory() as f64),
+        "\ngpu:\nUsage: {}%\nClock-G: {} MHz\nClock-M: {} MHz\nClock-SM: {} MHz\nClock-V: {} MHz\nTemp {}°C\nMem-Free: {}\nMem-Used: {}\nMem-Total: {}\nPower: {} / {} W\nFans: {}% | {}%\n",
+        gpu.utilization_rates().unwrap().gpu,
+        gpu.clock_info(Clock::Graphics).unwrap(),
+        gpu.clock_info(Clock::Memory).unwrap(),
+        gpu.clock_info(Clock::SM).unwrap(),
+        gpu.clock_info(Clock::Video).unwrap(),
+        gpu.temperature(TemperatureSensor::Gpu).unwrap(),
+        format_bytes(gpu.memory_info().unwrap().free as f64),
+        format_bytes(gpu.memory_info().unwrap().used as f64),
+        format_bytes(gpu.memory_info().unwrap().total as f64),
+        gpu.power_usage().unwrap_or_default() / 1000,
+        gpu.enforced_power_limit().unwrap_or_default() / 1000,
+        gpu.fan_speed(0).unwrap_or_default(),
+        gpu.fan_speed(1).unwrap_or_default(),
     );
+
+    // text += &format!("{:#?}\n", appdata.ohw_info);
+
+    // let sys = System::new();
+    // text += &format!("cpu temp: {} °C", sys.cpu_load().unwrap().done().unwrap()[0].platform.);
 
     show_cpu(appdata, ui);
     show_processes(appdata, ui);
@@ -133,6 +159,31 @@ fn show_ping(appdata: &MyApp, ui: &mut Ui) {
 }
 
 fn show_cpu(appdata: &MyApp, ui: &mut Ui) {
+    let cpu_node = appdata.ohw_info.Children[0]
+        .Children
+        .iter()
+        .find(|n| n.ImageURL == "images_icon/cpu.png")
+        .unwrap();
+    let temps = cpu_node
+        .Children
+        .iter()
+        .find(|n| n.Text == "Temperatures")
+        .unwrap();
+    let coretemps = temps
+        .Children
+        .iter()
+        .filter_map(|n| {
+            if n.Text.contains("CPU Core #") {
+                Some((n.Text.replace("CPU Core #", "").parse::<i32>().unwrap(), n))
+            } else {
+                None
+            }
+        })
+        .collect_vec();
+    // for (i, n) in coretemps {
+    //     text += &format!("Core {i}: {}\n", n.Value);
+    // }
+
     ui.spacing_mut().interact_size = [15.0, 12.0].into();
 
     let cur_mem = appdata.system_status.used_memory() as f32;
@@ -166,13 +217,17 @@ fn show_cpu(appdata: &MyApp, ui: &mut Ui) {
         .spacing([2.0, 2.0])
         .striped(true)
         .show(ui, |ui| {
-            for cpu_chunk in appdata.system_status.cpus().chunks(2) {
+            for (i, cpu_chunk) in appdata.system_status.cpus().chunks(2).enumerate() {
                 for cpu in cpu_chunk {
                     let usage = cpu.cpu_usage();
                     ui.add(
                         ProgressBar::new(usage / 100.0)
                             .desired_width(SIZE.x / 2.0 - 5.0)
-                            .text(RichText::new(format!("{usage:.0}%")).small().strong()),
+                            .text(
+                                RichText::new(format!("{usage:.0}% {}", coretemps[i].1.Value))
+                                    .small()
+                                    .strong(),
+                            ),
                     );
                 }
                 ui.end_row();
@@ -366,9 +421,7 @@ pub fn init_system(appdata: &mut MyApp) {
     }
 
     unsafe {
-        dbg!(PdhCollectQueryData(
-            appdata.windows_performance_query_handle
-        ));
+        PdhCollectQueryData(appdata.windows_performance_query_handle);
     }
 }
 
@@ -443,6 +496,8 @@ pub fn refresh(appdata: &mut MyApp) {
     appdata.system_status.refresh_processes();
 
     refresh_disk_io_time(appdata);
+
+    refresh_ohw(appdata);
 }
 
 fn refresh_cpu(appdata: &mut MyApp) {
@@ -450,4 +505,22 @@ fn refresh_cpu(appdata: &mut MyApp) {
     appdata
         .cpu_buffer
         .add(appdata.system_status.global_cpu_info().cpu_usage());
+}
+
+fn refresh_ohw(appdata: &mut MyApp) {
+    let data = reqwest::blocking::get("http://localhost:8085/data.json").unwrap();
+    appdata.ohw_info = data.json().unwrap();
+}
+
+#[derive(Deserialize, Default, Debug)]
+#[allow(dead_code)]
+#[allow(non_snake_case)]
+pub struct OHWNode {
+    Children: Vec<OHWNode>,
+    ImageURL: String,
+    Max: String,
+    Min: String,
+    Text: String,
+    Value: String,
+    id: i64,
 }

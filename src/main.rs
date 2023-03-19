@@ -7,9 +7,10 @@ use chrono::{Duration, Local, NaiveDateTime};
 use circlevec::CircleVec;
 use eframe::egui::{self, ScrollArea};
 use ekko::{Ekko, EkkoResponse};
+use nvml_wrapper::Nvml;
 use sidebar::dispose_sidebar;
 use sysinfo::{System, SystemExt};
-use system_info::{init_system, refresh};
+use system_info::{init_system, refresh, OHWNode};
 
 mod autostart;
 mod bytes_format;
@@ -99,6 +100,8 @@ fn main() -> Result<(), eframe::Error> {
         windows_performance_query_handle: 0,
         disk_time_value_handle_map: Default::default(),
         cpu_buffer,
+        nvid_info: Nvml::init().unwrap(),
+        ohw_info: Default::default(),
     };
 
     init_system(&mut appstate);
@@ -128,6 +131,8 @@ pub struct MyApp {
     pub last_ping_time: std::time::Duration,
     pub windows_performance_query_handle: isize,
     pub disk_time_value_handle_map: Vec<(String, isize, f64)>,
+    pub nvid_info: Nvml,
+    pub ohw_info: OHWNode,
 }
 
 impl eframe::App for MyApp {

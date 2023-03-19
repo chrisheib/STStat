@@ -4,8 +4,13 @@ use std::{
 };
 
 pub struct CircleVec<T> {
-    vec: Mutex<Vec<T>>,
     capacity: usize,
+    inner_vec: Mutex<InnerVec<T>>,
+}
+
+pub struct InnerVec<T> {
+    vec: Vec<T>,
+    pointer: usize,
 }
 
 impl<T: Clone + Default> CircleVec<T> {
@@ -13,22 +18,30 @@ impl<T: Clone + Default> CircleVec<T> {
         let mut inner = Vec::<T>::with_capacity(capacity);
         inner.resize_with(capacity, Default::default);
         Arc::new(Self {
-            vec: Mutex::new(inner),
             capacity,
+            inner_vec: Mutex::new(InnerVec {
+                vec: inner,
+                pointer: 0,
+            }),
         })
     }
 
     pub fn add(&self, value: T) {
-        let mut v = self.vec.lock().unwrap();
-        if v.len() >= self.capacity {
-            v.remove(0);
+        let mut inner = self.inner_vec.lock().unwrap();
+        let p = inner.pointer;
+        inner.vec[p] = value;
+        inner.pointer += 1;
+        if inner.pointer >= self.capacity {
+            inner.pointer = 0;
         }
-        v.push(value);
     }
 
     pub fn read(&self) -> Vec<T> {
-        let v = self.vec.lock().unwrap();
-        v.clone()
+        let inner = self.inner_vec.lock().unwrap();
+        let mut out: Vec<T> = Vec::with_capacity(self.capacity);
+        out.extend_from_slice(&inner.vec[inner.pointer..self.capacity]);
+        out.extend_from_slice(&inner.vec[0..inner.pointer]);
+        out
     }
 
     pub fn capacity(&self) -> usize {

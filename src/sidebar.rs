@@ -63,7 +63,7 @@ pub(crate) fn setup_sidebar() {
     // }
 
     let hwnd = unsafe { FindWindowW(None, w!("RS_Sidebar")) };
-    dbg!(hwnd);
+    // dbg!(hwnd);
 
     // let active_window = active_win_pos_rs::get_active_window().expect("Active window should exist");
     // println!("active window: {active_window:#?}");
