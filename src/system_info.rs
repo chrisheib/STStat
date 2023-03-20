@@ -159,27 +159,31 @@ fn show_ping(appdata: &MyApp, ui: &mut Ui) {
 }
 
 fn show_cpu(appdata: &MyApp, ui: &mut Ui) {
-    let cpu_node = appdata.ohw_info.Children[0]
-        .Children
-        .iter()
-        .find(|n| n.ImageURL == "images_icon/cpu.png")
-        .unwrap();
-    let temps = cpu_node
-        .Children
-        .iter()
-        .find(|n| n.Text == "Temperatures")
-        .unwrap();
-    let coretemps = temps
-        .Children
-        .iter()
-        .filter_map(|n| {
-            if n.Text.contains("CPU Core #") {
-                Some((n.Text.replace("CPU Core #", "").parse::<i32>().unwrap(), n))
-            } else {
-                None
-            }
-        })
-        .collect_vec();
+    let ohw_opt = appdata.ohw_info.lock().unwrap();
+    let ohw_opt_ref = ohw_opt.as_ref();
+    let coretemps = if let Some(ohw) = ohw_opt_ref {
+        ohw.Children[0]
+            .Children
+            .iter()
+            .find(|n| n.ImageURL == "images_icon/cpu.png")
+            .unwrap()
+            .Children
+            .iter()
+            .find(|n| n.Text == "Temperatures")
+            .unwrap()
+            .Children
+            .iter()
+            .filter_map(|n| {
+                if n.Text.contains("CPU Core #") {
+                    Some((n.Text.replace("CPU Core #", "").parse::<i32>().unwrap(), n))
+                } else {
+                    None
+                }
+            })
+            .collect_vec()
+    } else {
+        vec![]
+    };
     // for (i, n) in coretemps {
     //     text += &format!("Core {i}: {}\n", n.Value);
     // }
@@ -219,12 +223,16 @@ fn show_cpu(appdata: &MyApp, ui: &mut Ui) {
         .show(ui, |ui| {
             for (i, cpu_chunk) in appdata.system_status.cpus().chunks(2).enumerate() {
                 for cpu in cpu_chunk {
+                    let temp = coretemps
+                        .get(i)
+                        .map(|o| o.1.Value.to_string())
+                        .unwrap_or_default();
                     let usage = cpu.cpu_usage();
                     ui.add(
                         ProgressBar::new(usage / 100.0)
                             .desired_width(SIZE.x / 2.0 - 5.0)
                             .text(
-                                RichText::new(format!("{usage:.0}% {}", coretemps[i].1.Value))
+                                RichText::new(format!("{usage:.0}% {temp}"))
                                     .small()
                                     .strong(),
                             ),
@@ -496,8 +504,6 @@ pub fn refresh(appdata: &mut MyApp) {
     appdata.system_status.refresh_processes();
 
     refresh_disk_io_time(appdata);
-
-    refresh_ohw(appdata);
 }
 
 fn refresh_cpu(appdata: &mut MyApp) {
@@ -505,11 +511,6 @@ fn refresh_cpu(appdata: &mut MyApp) {
     appdata
         .cpu_buffer
         .add(appdata.system_status.global_cpu_info().cpu_usage());
-}
-
-fn refresh_ohw(appdata: &mut MyApp) {
-    let data = reqwest::blocking::get("http://localhost:8085/data.json").unwrap();
-    appdata.ohw_info = data.json().unwrap();
 }
 
 #[derive(Deserialize, Default, Debug)]

@@ -1,7 +1,10 @@
 //! Show a custom window frame instead of the default OS window chrome decorations.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-use std::{sync::Arc, thread};
+use std::{
+    sync::{Arc, Mutex},
+    thread,
+};
 
 use chrono::{Duration, Local, NaiveDateTime};
 use circlevec::CircleVec;
@@ -56,8 +59,9 @@ fn main() -> Result<(), eframe::Error> {
     let ping_buffer = CircleVec::<u128>::new(100);
     let cpu_buffer = CircleVec::<f32>::new(100);
     let thread_pb = ping_buffer.clone();
+    let ohw_info: Arc<Mutex<Option<OHWNode>>> = Default::default();
+    let thread_ohw = ohw_info.clone();
 
-    // Each thread will send its id via the channel
     thread::spawn(move || {
         let ekko = Ekko::with_target([8, 8, 8, 8]).unwrap();
         loop {
@@ -68,11 +72,37 @@ fn main() -> Result<(), eframe::Error> {
                 //     // prod.
                 // }
                 thread_pb.add(res.elapsed.as_millis());
-                thread::sleep(std::time::Duration::from_secs(1) - res.elapsed)
-            } else {
-                thread::sleep(std::time::Duration::from_secs(1))
-            };
+            }
+            thread::sleep(
+                Duration::milliseconds(
+                    (1000 - Local::now().naive_local().timestamp_subsec_millis() as i64)
+                        .min(1000)
+                        .max(520),
+                )
+                .to_std()
+                .unwrap(),
+            );
         }
+    });
+    thread::spawn(move || loop {
+        if let Ok(data) = reqwest::blocking::get("http://localhost:8085/data.json") {
+            if let Ok(data) = data.json::<OHWNode>() {
+                *thread_ohw.lock().unwrap() = Some(data)
+            } else {
+                *thread_ohw.lock().unwrap() = None
+            }
+        } else {
+            *thread_ohw.lock().unwrap() = None
+        };
+        thread::sleep(
+            Duration::milliseconds(
+                (1000 - Local::now().naive_local().timestamp_subsec_millis() as i64)
+                    .min(999)
+                    .max(520),
+            )
+            .to_std()
+            .unwrap(),
+        );
     });
 
     let options = eframe::NativeOptions {
@@ -101,7 +131,7 @@ fn main() -> Result<(), eframe::Error> {
         disk_time_value_handle_map: Default::default(),
         cpu_buffer,
         nvid_info: Nvml::init().unwrap(),
-        ohw_info: Default::default(),
+        ohw_info,
     };
 
     init_system(&mut appstate);
@@ -117,8 +147,6 @@ fn main() -> Result<(), eframe::Error> {
     Ok(())
 }
 
-// type PingBuffer = Consumer<u128, Arc<SharedRb<u128, Vec<MaybeUninit<u128>>>>>;
-
 pub struct MyApp {
     pub firstupdate: bool,
     pub create_frame: u64,
@@ -132,7 +160,7 @@ pub struct MyApp {
     pub windows_performance_query_handle: isize,
     pub disk_time_value_handle_map: Vec<(String, isize, f64)>,
     pub nvid_info: Nvml,
-    pub ohw_info: OHWNode,
+    pub ohw_info: Arc<Mutex<Option<OHWNode>>>,
 }
 
 impl eframe::App for MyApp {
