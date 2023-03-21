@@ -13,7 +13,8 @@ use ekko::{Ekko, EkkoResponse};
 use nvml_wrapper::Nvml;
 use sidebar::dispose_sidebar;
 use sysinfo::{System, SystemExt};
-use system_info::{init_system, refresh, OHWNode};
+use system_info::{init_system, refresh, GpuData, OHWNode};
+use tokio::{runtime::Runtime, time::sleep};
 
 mod autostart;
 mod bytes_format;
@@ -56,6 +57,7 @@ fn main() -> Result<(), eframe::Error> {
 
     // let (tx, rx): (Sender<std::time::Duration>, Receiver<std::time::Duration>) = mpsc::channel();
     // let (mut prod, cons) = SharedRb::<u128, Vec<_>>::new(100).split();
+    let rt = tokio::runtime::Runtime::new().unwrap();
     let ping_buffer = CircleVec::<u128>::new(100);
     let cpu_buffer = CircleVec::<f32>::new(100);
     let thread_pb = ping_buffer.clone();
@@ -84,26 +86,7 @@ fn main() -> Result<(), eframe::Error> {
             );
         }
     });
-    thread::spawn(move || loop {
-        if let Ok(data) = reqwest::blocking::get("http://localhost:8085/data.json") {
-            if let Ok(data) = data.json::<OHWNode>() {
-                *thread_ohw.lock().unwrap() = Some(data)
-            } else {
-                *thread_ohw.lock().unwrap() = None
-            }
-        } else {
-            *thread_ohw.lock().unwrap() = None
-        };
-        thread::sleep(
-            Duration::milliseconds(
-                (1000 - Local::now().naive_local().timestamp_subsec_millis() as i64)
-                    .min(999)
-                    .max(520),
-            )
-            .to_std()
-            .unwrap(),
-        );
-    });
+    rt.spawn(ohw_thread(thread_ohw));
 
     let options = eframe::NativeOptions {
         // Hide the OS-specific "chrome" around the window:
@@ -114,7 +97,7 @@ fn main() -> Result<(), eframe::Error> {
         initial_window_size: Some(SIZE),
         initial_window_pos: Some(POS),
         drag_and_drop_support: false,
-        vsync: false,
+        vsync: true,
         ..Default::default()
     };
 
@@ -132,6 +115,8 @@ fn main() -> Result<(), eframe::Error> {
         cpu_buffer,
         nvid_info: Nvml::init().unwrap(),
         ohw_info,
+        rt,
+        gpu: None,
     };
 
     init_system(&mut appstate);
@@ -145,6 +130,30 @@ fn main() -> Result<(), eframe::Error> {
     dispose_sidebar();
 
     Ok(())
+}
+
+async fn ohw_thread(thread_ohw: Arc<Mutex<Option<OHWNode>>>) -> ! {
+    loop {
+        if let Ok(data) = reqwest::get("http://localhost:8085/data.json").await {
+            if let Ok(data) = data.json::<OHWNode>().await {
+                *thread_ohw.lock().unwrap() = Some(data)
+            } else {
+                *thread_ohw.lock().unwrap() = None
+            }
+        } else {
+            *thread_ohw.lock().unwrap() = None
+        };
+        sleep(
+            Duration::milliseconds(
+                (1000 - Local::now().naive_local().timestamp_subsec_millis() as i64)
+                    .min(999)
+                    .max(520),
+            )
+            .to_std()
+            .unwrap(),
+        )
+        .await;
+    }
 }
 
 pub struct MyApp {
@@ -161,6 +170,8 @@ pub struct MyApp {
     pub disk_time_value_handle_map: Vec<(String, isize, f64)>,
     pub nvid_info: Nvml,
     pub ohw_info: Arc<Mutex<Option<OHWNode>>>,
+    pub rt: Runtime,
+    pub gpu: Option<GpuData>,
 }
 
 impl eframe::App for MyApp {

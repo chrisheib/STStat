@@ -8,7 +8,10 @@ use eframe::{
 };
 use egui_extras::{Column, TableBuilder};
 use itertools::Itertools;
-use nvml_wrapper::enum_wrappers::device::{Clock, TemperatureSensor};
+use nvml_wrapper::{
+    enum_wrappers::device::{Clock, TemperatureSensor},
+    error::NvmlError,
+};
 use serde::Deserialize;
 use std::ops::Add;
 use sysinfo::{CpuExt, DiskExt, NetworkExt, NetworksExt, ProcessExt, SystemExt};
@@ -75,29 +78,32 @@ pub fn set_system_info_components(appdata: &MyApp, ui: &mut Ui) {
         );
     }
 
+    text += &format!("{:#?}", appdata.gpu);
+
     // text += &format!(
     //     "memory: \n{} / {}\n",
     //     format_bytes(appdata.system_status.used_memory() as f64),
     //     format_bytes(appdata.system_status.total_memory() as f64),
     // );
-    let gpu = appdata.nvid_info.device_by_index(0).unwrap();
+    // let gpu = appdata.nvid_info.device_by_index(0).unwrap();
+    // appdata.gpu = Some(gpu);
 
-    text += &format!(
-        "\ngpu:\nUsage: {}%\nClock-G: {} MHz\nClock-M: {} MHz\nClock-SM: {} MHz\nClock-V: {} MHz\nTemp {}°C\nMem-Free: {}\nMem-Used: {}\nMem-Total: {}\nPower: {} / {} W\nFans: {}% | {}%\n",
-        gpu.utilization_rates().unwrap().gpu,
-        gpu.clock_info(Clock::Graphics).unwrap(),
-        gpu.clock_info(Clock::Memory).unwrap(),
-        gpu.clock_info(Clock::SM).unwrap(),
-        gpu.clock_info(Clock::Video).unwrap(),
-        gpu.temperature(TemperatureSensor::Gpu).unwrap(),
-        format_bytes(gpu.memory_info().unwrap().free as f64),
-        format_bytes(gpu.memory_info().unwrap().used as f64),
-        format_bytes(gpu.memory_info().unwrap().total as f64),
-        gpu.power_usage().unwrap_or_default() / 1000,
-        gpu.enforced_power_limit().unwrap_or_default() / 1000,
-        gpu.fan_speed(0).unwrap_or_default(),
-        gpu.fan_speed(1).unwrap_or_default(),
-    );
+    // text += &format!(
+    //     "\ngpu:\nUsage: {}%\nClock-G: {} MHz\nClock-M: {} MHz\nClock-SM: {} MHz\nClock-V: {} MHz\nTemp {}°C\nMem-Free: {}\nMem-Used: {}\nMem-Total: {}\nPower: {} / {} W\nFans: {}% | {}%\n",
+    //     gpu.utilization_rates().unwrap().gpu,
+    //     gpu.clock_info(Clock::Graphics).unwrap(),
+    //     gpu.clock_info(Clock::Memory).unwrap(),
+    //     gpu.clock_info(Clock::SM).unwrap(),
+    //     gpu.clock_info(Clock::Video).unwrap(),
+    //     gpu.temperature(TemperatureSensor::Gpu).unwrap(),
+    //     format_bytes(gpu.memory_info().unwrap().free as f64),
+    //     format_bytes(gpu.memory_info().unwrap().used as f64),
+    //     format_bytes(gpu.memory_info().unwrap().total as f64),
+    //     gpu.power_usage().unwrap_or_default() / 1000,
+    //     gpu.enforced_power_limit().unwrap_or_default() / 1000,
+    //     gpu.fan_speed(0).unwrap_or_default(),
+    //     gpu.fan_speed(1).unwrap_or_default(),
+    // );
 
     // text += &format!("{:#?}\n", appdata.ohw_info);
 
@@ -111,6 +117,51 @@ pub fn set_system_info_components(appdata: &MyApp, ui: &mut Ui) {
 
     ui.label(text);
     ui.separator();
+}
+
+#[derive(Default, Debug, Clone)]
+#[allow(dead_code)]
+pub struct GpuData {
+    utilization: u32,
+    clock_graphics: u32,
+    clock_memory: u32,
+    clock_sm: u32,
+    clock_video: u32,
+    temperature: u32,
+    memory_free: u64,
+    memory_used: u64,
+    memory_total: u64,
+    power_usage: u32,
+    power_limit: u32,
+    fan_speeds: Vec<u32>,
+}
+
+pub fn refresh_gpu(appdata: &mut MyApp) {
+    if let Ok(g) = || -> Result<GpuData, NvmlError> {
+        let gpu = appdata.nvid_info.device_by_index(0)?;
+        let mut g = GpuData {
+            utilization: gpu.utilization_rates()?.gpu,
+            clock_graphics: gpu.clock_info(Clock::Graphics)?,
+            clock_memory: gpu.clock_info(Clock::Memory)?,
+            clock_sm: gpu.clock_info(Clock::SM)?,
+            clock_video: gpu.clock_info(Clock::Video)?,
+            temperature: gpu.temperature(TemperatureSensor::Gpu)?,
+            memory_free: gpu.memory_info()?.free,
+            memory_used: gpu.memory_info()?.used,
+            memory_total: gpu.memory_info()?.total,
+            power_usage: gpu.power_usage()? / 1000,
+            power_limit: gpu.enforced_power_limit()? / 1000,
+            fan_speeds: vec![],
+        };
+        for i in 0..gpu.num_fans()? {
+            g.fan_speeds.push(gpu.fan_speed(i)?);
+        }
+        Ok(g)
+    }() {
+        appdata.gpu = Some(g);
+    } else {
+        appdata.gpu = None;
+    };
 }
 
 fn show_processes(appdata: &MyApp, ui: &mut Ui) {
@@ -497,6 +548,7 @@ fn convert_to_pcwstr(s: &str) -> PCWSTR {
 
 pub fn refresh(appdata: &mut MyApp) {
     refresh_cpu(appdata);
+    refresh_gpu(appdata);
 
     appdata.system_status.refresh_disks();
     appdata.system_status.refresh_memory();
