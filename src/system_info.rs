@@ -1,10 +1,14 @@
-use crate::{bytes_format::format_bytes, sidebar::STATIC_HWND, MyApp, SIZE};
+use crate::{
+    bytes_format::format_bytes, components::edgy_progress::EdgyProgressBar, sidebar::STATIC_HWND,
+    MyApp, SIZE,
+};
 use eframe::{
     egui::{
         plot::{Line, Plot, PlotPoints},
-        Grid, Label, Layout, ProgressBar, RichText, Ui,
+        Grid, Label, Layout, RichText, Ui,
     },
     emath::Align::{self, Max},
+    epaint::{Color32, Vec2},
 };
 use egui_extras::{Column, TableBuilder};
 use itertools::Itertools;
@@ -19,10 +23,17 @@ use sysinfo::{CpuExt, DiskExt, NetworkExt, NetworksExt, ProcessExt, SystemExt};
 use windows::{
     core::{decode_utf8_char, PCWSTR, PWSTR},
     w,
-    Win32::System::Performance::{
-        PdhAddCounterW, PdhBrowseCountersW, PdhCollectQueryData, PdhGetFormattedCounterValue,
-        PdhOpenQueryW, PDH_BROWSE_DLG_CONFIG_W, PDH_CSTATUS_VALID_DATA, PDH_FMT_DOUBLE,
-        PERF_DETAIL_ADVANCED,
+    Win32::{
+        Foundation::BOOL,
+        Graphics::{
+            Dwm::DwmGetColorizationColor,
+            Gdi::{GetSysColor, SYS_COLOR_INDEX},
+        },
+        System::Performance::{
+            PdhAddCounterW, PdhBrowseCountersW, PdhCollectQueryData, PdhGetFormattedCounterValue,
+            PdhOpenQueryW, PDH_BROWSE_DLG_CONFIG_W, PDH_CSTATUS_VALID_DATA, PDH_FMT_DOUBLE,
+            PERF_DETAIL_ADVANCED,
+        },
     },
 };
 
@@ -78,7 +89,7 @@ pub fn set_system_info_components(appdata: &MyApp, ui: &mut Ui) {
         );
     }
 
-    text += &format!("{:#?}", appdata.gpu);
+    text += &format!("{:?}", appdata.gpu);
 
     // text += &format!(
     //     "memory: \n{} / {}\n",
@@ -113,6 +124,7 @@ pub fn set_system_info_components(appdata: &MyApp, ui: &mut Ui) {
     show_cpu(appdata, ui);
     show_processes(appdata, ui);
     show_ping(appdata, ui);
+    show_gpu(appdata, ui);
     add_drives_section(appdata, ui);
 
     ui.label(text);
@@ -187,11 +199,25 @@ fn show_processes(appdata: &MyApp, ui: &mut Ui) {
 
     // By CPU
     processes.sort_by(|a, b| b.cpu.total_cmp(&a.cpu));
-    add_process_table(ui, 7, &processes, num_cpus, "Proc CPU");
+    add_process_table(
+        ui,
+        7,
+        &processes,
+        num_cpus,
+        "Proc CPU",
+        ProcessTableDisplayMode::Cpu,
+    );
 
     // By Memory
     processes.sort_by(|a, b| b.memory.cmp(&a.memory));
-    add_process_table(ui, 7, &processes, num_cpus, "Proc Ram");
+    add_process_table(
+        ui,
+        7,
+        &processes,
+        num_cpus,
+        "Proc Ram",
+        ProcessTableDisplayMode::Ram,
+    );
 }
 
 fn show_ping(appdata: &MyApp, ui: &mut Ui) {
@@ -248,7 +274,7 @@ fn show_cpu(appdata: &MyApp, ui: &mut Ui) {
     let last_cpu = cpu.last().copied().unwrap_or_default();
 
     ui.add(
-        ProgressBar::new(last_cpu / 100.0).text(
+        EdgyProgressBar::new(last_cpu / 100.0).text(
             RichText::new(format!("CPU: {last_cpu:.1}%",))
                 .small()
                 .strong(),
@@ -256,7 +282,7 @@ fn show_cpu(appdata: &MyApp, ui: &mut Ui) {
     );
 
     ui.add(
-        ProgressBar::new(cur_mem / total_mem).text(
+        EdgyProgressBar::new(cur_mem / total_mem).text(
             RichText::new(format!(
                 "RAM: {} / {}",
                 format_bytes(cur_mem as f64),
@@ -280,7 +306,7 @@ fn show_cpu(appdata: &MyApp, ui: &mut Ui) {
                         .unwrap_or_default();
                     let usage = cpu.cpu_usage();
                     ui.add(
-                        ProgressBar::new(usage / 100.0)
+                        EdgyProgressBar::new(usage / 100.0)
                             .desired_width(SIZE.x / 2.0 - 5.0)
                             .text(
                                 RichText::new(format!("{usage:.0}% {temp}"))
@@ -304,23 +330,65 @@ fn show_cpu(appdata: &MyApp, ui: &mut Ui) {
     ui.separator();
 }
 
-fn add_process_table(ui: &mut Ui, len: usize, p: &[Proc], num_cpus: usize, name: &str) {
+fn show_gpu(appdata: &MyApp, ui: &mut Ui) {}
+
+#[derive(PartialEq, Eq)]
+enum ProcessTableDisplayMode {
+    All,
+    Cpu,
+    Ram,
+}
+
+fn add_process_table(
+    ui: &mut Ui,
+    len: usize,
+    p: &[Proc],
+    num_cpus: usize,
+    name: &str,
+    display_mode: ProcessTableDisplayMode,
+) {
     ui.push_id(name, |ui| {
-        let table = TableBuilder::new(ui)
-            .striped(true)
-            .column(Column::exact((SIZE.x - 10.0) / 2.0))
-            .columns(Column::exact((SIZE.x - 10.0) / 4.0), 2)
-            .header(10.0, |mut header| {
-                header.col(|ui| {
-                    ui.add(Label::new(RichText::new(name).small()).wrap(false));
-                });
-                header.col(|ui| {
-                    ui.add(Label::new(RichText::new("RAM").small()).wrap(false));
-                });
-                header.col(|ui| {
-                    ui.add(Label::new(RichText::new("CPU").small()).wrap(false));
-                });
+        let mut table = TableBuilder::new(ui).striped(true).column(Column::exact(
+            (SIZE.x - 10.0)
+                * if display_mode == ProcessTableDisplayMode::All {
+                    0.4
+                } else {
+                    0.63
+                },
+        ));
+        if display_mode == ProcessTableDisplayMode::All
+            || display_mode == ProcessTableDisplayMode::Ram
+        {
+            table = table.column(Column::exact((SIZE.x - 10.0) * 0.3))
+        };
+        if display_mode == ProcessTableDisplayMode::All
+            || display_mode == ProcessTableDisplayMode::Cpu
+        {
+            table = table.column(Column::exact((SIZE.x - 10.0) * 0.3))
+        };
+        let table = table.header(10.0, |mut header| {
+            header.col(|ui| {
+                ui.add(Label::new(RichText::new(name).small()).wrap(false));
             });
+            if display_mode == ProcessTableDisplayMode::All
+                || display_mode == ProcessTableDisplayMode::Ram
+            {
+                header.col(|ui| {
+                    ui.with_layout(Layout::top_down_justified(Max), |ui| {
+                        ui.add(Label::new(RichText::new("RAM").small()).wrap(false));
+                    });
+                });
+            }
+            if display_mode == ProcessTableDisplayMode::All
+                || display_mode == ProcessTableDisplayMode::Cpu
+            {
+                header.col(|ui| {
+                    ui.with_layout(Layout::top_down_justified(Max), |ui| {
+                        ui.add(Label::new(RichText::new("CPU").small()).wrap(false));
+                    });
+                });
+            }
+        });
         table.body(|body| {
             body.rows(10.0, len, |row_index, mut row| {
                 let p = &p[row_index];
@@ -342,28 +410,38 @@ fn add_process_table(ui: &mut Ui, len: usize, p: &[Proc], num_cpus: usize, name:
                         .wrap(false),
                     );
                 });
-                row.col(|ui| {
-                    ui.with_layout(Layout::top_down_justified(Max), |ui| {
-                        ui.add(
-                            Label::new(
-                                RichText::new(format_bytes(p.memory as f64))
-                                    .small()
-                                    .strong(),
+                if display_mode == ProcessTableDisplayMode::All
+                    || display_mode == ProcessTableDisplayMode::Ram
+                {
+                    row.col(|ui| {
+                        ui.with_layout(Layout::top_down_justified(Max), |ui| {
+                            ui.add(
+                                Label::new(
+                                    RichText::new(format_bytes(p.memory as f64))
+                                        .small()
+                                        .strong(),
+                                )
+                                .wrap(false),
                             )
-                            .wrap(false),
-                        )
+                        });
                     });
-                });
-                row.col(|ui| {
-                    ui.add(
-                        Label::new(
-                            RichText::new(format!("{:.0}%", p.cpu / num_cpus as f32))
-                                .small()
-                                .strong(),
-                        )
-                        .wrap(false),
-                    );
-                });
+                }
+                if display_mode == ProcessTableDisplayMode::All
+                    || display_mode == ProcessTableDisplayMode::Cpu
+                {
+                    row.col(|ui| {
+                        ui.with_layout(Layout::top_down_justified(Max), |ui| {
+                            ui.add(
+                                Label::new(
+                                    RichText::new(format!("{:.1}%", p.cpu / num_cpus as f32))
+                                        .small()
+                                        .strong(),
+                                )
+                                .wrap(false),
+                            );
+                        });
+                    });
+                }
             });
         });
     });
@@ -383,10 +461,11 @@ fn add_graph(id: &str, ui: &mut Ui, line: Line, max_y: f64) {
         .show_y(false)
         .x_axis_formatter(|_, _| String::new())
         .y_axis_formatter(|_, _| String::new())
-        .width(SIZE.x - 10.0)
+        .width(SIZE.x - 7.0)
         .height(30.0)
         .include_y(0.0)
         .include_y(max_y)
+        .set_margin_fraction(Vec2::ZERO)
         .show(ui, |plot_ui| plot_ui.line(line));
 }
 
@@ -411,12 +490,11 @@ fn add_drives_section(appdata: &MyApp, ui: &mut Ui) {
                         .strong(),
                 ));
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    ui.add_space(15.0);
                     ui.add(
-                        ProgressBar::new(
+                        EdgyProgressBar::new(
                             (d.total_space() - d.available_space()) as f32 / d.total_space() as f32,
                         )
-                        .desired_width(SIZE.x / 1.6)
+                        .desired_width(SIZE.x * 0.6)
                         .text(
                             RichText::new(format!(
                                 "Free: {}",
@@ -482,6 +560,29 @@ pub fn init_system(appdata: &mut MyApp) {
     unsafe {
         PdhCollectQueryData(appdata.windows_performance_query_handle);
     }
+}
+
+pub fn get_windows_glass_color() -> Color32 {
+    let mut col: u32 = 0;
+    let mut opaque: BOOL = BOOL(0);
+    unsafe {
+        DwmGetColorizationColor(&mut col, &mut opaque).unwrap();
+        // let bytes1: [u8; 4] = dbg!(GetSysColor(SYS_COLOR_INDEX(5)).to_le_bytes());
+    }
+    let bytes: [u8; 4] = col.to_be_bytes();
+    Color32::from_rgba_premultiplied(
+        darken(bytes[1]),
+        darken(bytes[2]),
+        darken(bytes[3]),
+        bytes[0],
+    )
+
+    // out = out.linear_multiply(1.2);
+    // out
+}
+
+fn darken(v: u8) -> u8 {
+    (v as f32 * 0.4) as u8
 }
 
 // fn get_core_efficiency_data() {

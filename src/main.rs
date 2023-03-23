@@ -8,23 +8,25 @@ use std::{
 
 use chrono::{Duration, Local, NaiveDateTime};
 use circlevec::CircleVec;
-use eframe::egui::{self, ScrollArea};
+use eframe::{
+    egui::{self, ScrollArea, Visuals},
+    epaint::Color32,
+};
 use ekko::{Ekko, EkkoResponse};
 use nvml_wrapper::Nvml;
 use sidebar::dispose_sidebar;
 use sysinfo::{System, SystemExt};
-use system_info::{init_system, refresh, GpuData, OHWNode};
+use system_info::{get_windows_glass_color, init_system, refresh, GpuData, OHWNode};
 use tokio::{runtime::Runtime, time::sleep};
 
 mod autostart;
 mod bytes_format;
 mod circlevec;
+mod components;
 mod sidebar;
 mod system_info;
 
 // On read problems, run: lodctr /r
-
-// TODO: nvml-wrapper = "0.9.0"
 
 pub const UPDATE_INTERVAL_MILLIS: i64 = 1000;
 
@@ -124,7 +126,13 @@ fn main() -> Result<(), eframe::Error> {
     eframe::run_native(
         "RS_Sidebar", // unused title
         options,
-        Box::new(|_cc| Box::new(appstate)),
+        Box::new(|cc| {
+            let mut v = Visuals::dark();
+            v.override_text_color = Some(Color32::from_gray(250));
+            v.window_fill = get_windows_glass_color();
+            cc.egui_ctx.set_visuals(v);
+            Box::new(appstate)
+        }),
     )?;
 
     dispose_sidebar();
@@ -244,10 +252,13 @@ fn custom_window_frame(
     use egui::*;
 
     let panel_frame = egui::Frame {
-        fill: ctx.style().visuals.window_fill(),
+        fill: { get_windows_glass_color() },
         // rounding: 10.0.into(),
-        stroke: ctx.style().visuals.widgets.noninteractive.fg_stroke,
-        outer_margin: 0.5.into(), // so the stroke is within the bounds
+        stroke: Stroke {
+            width: 0.0,
+            color: Color32::TRANSPARENT,
+        },
+        outer_margin: 0.0.into(), // so the stroke is within the bounds
         ..Default::default()
     };
 
