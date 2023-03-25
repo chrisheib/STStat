@@ -528,7 +528,7 @@ fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
         )
         .text(
             RichText::new(format!(
-                "POW: {:.0}W / {:.0}W",
+                "Pow: {:.0}W / {:.0}W",
                 appdata.gpu.as_ref().unwrap().power_usage,
                 appdata.gpu.as_ref().unwrap().power_limit
             ))
