@@ -1,7 +1,7 @@
 //! Show a custom window frame instead of the default OS window chrome decorations.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-use std::{fs::File, io::BufWriter, sync::Arc, thread, time::Instant};
+use std::{collections::HashMap, fs::File, io::BufWriter, sync::Arc, thread, time::Instant};
 
 use chrono::{Duration, Local, NaiveDateTime};
 use circlevec::CircleVec;
@@ -63,7 +63,6 @@ fn main() -> Result<(), eframe::Error> {
     // let (mut prod, cons) = SharedRb::<u128, Vec<_>>::new(100).split();
     let rt = tokio::runtime::Runtime::new().unwrap();
     let ping_buffer = CircleVec::<u128>::new(100);
-    let cpu_buffer = CircleVec::<f32>::new(100);
     let thread_pb = ping_buffer.clone();
     let ohw_info: Arc<Mutex<Option<OHWNode>>> = Default::default();
     let thread_ohw = ohw_info.clone();
@@ -116,7 +115,7 @@ fn main() -> Result<(), eframe::Error> {
         last_ping_time: Default::default(),
         windows_performance_query_handle: 0,
         disk_time_value_handle_map: Default::default(),
-        cpu_buffer,
+        cpu_buffer: CircleVec::<f32>::new(100),
         nvid_info: Nvml::init().unwrap(),
         ohw_info,
         rt,
@@ -132,6 +131,8 @@ fn main() -> Result<(), eframe::Error> {
         step: 0,
         cur_ram: 0.0,
         total_ram: 0.0,
+        net_up_buffer: Default::default(),
+        net_down_buffer: Default::default(),
     };
 
     init_system(&mut appstate);
@@ -220,6 +221,8 @@ pub struct MyApp {
     pub step: usize,
     pub cur_ram: f32,
     pub total_ram: f32,
+    pub net_up_buffer: HashMap<String, Arc<CircleVec<f64>>>,
+    pub net_down_buffer: HashMap<String, Arc<CircleVec<f64>>>,
 }
 
 impl eframe::App for MyApp {

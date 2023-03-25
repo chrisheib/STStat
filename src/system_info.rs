@@ -1,6 +1,7 @@
 use crate::{
-    bytes_format::format_bytes, components::edgy_progress::EdgyProgressBar, sidebar::STATIC_HWND,
-    step_timing, CurrentStep, MyApp, MEASURE_PERFORMANCE, PERFORMANCE_FRAMES, SIZE,
+    bytes_format::format_bytes, circlevec::CircleVec, components::edgy_progress::EdgyProgressBar,
+    sidebar::STATIC_HWND, step_timing, CurrentStep, MyApp, MEASURE_PERFORMANCE, PERFORMANCE_FRAMES,
+    SIZE,
 };
 use eframe::{
     egui::{
@@ -65,76 +66,109 @@ pub fn set_system_info_components(appdata: &mut MyApp, ui: &mut Ui) {
     ui.separator();
     step_timing(appdata, crate::CurrentStep::Begin);
 
-    // text += &format!(
-    //     "memory: \n{} / {}\n",
-    //     format_bytes(appdata.system_status.used_memory() as f64),
-    //     format_bytes(appdata.system_status.total_memory() as f64),
-    // );
-    // let gpu = appdata.nvid_info.device_by_index(0).unwrap();
-    // appdata.gpu = Some(gpu);
-
-    // text += &format!(
-    //     "\ngpu:\nUsage: {}%\nClock-G: {} MHz\nClock-M: {} MHz\nClock-SM: {} MHz\nClock-V: {} MHz\nTemp {}°C\nMem-Free: {}\nMem-Used: {}\nMem-Total: {}\nPower: {} / {} W\nFans: {}% | {}%\n",
-    //     gpu.utilization_rates().unwrap().gpu,
-    //     gpu.clock_info(Clock::Graphics).unwrap(),
-    //     gpu.clock_info(Clock::Memory).unwrap(),
-    //     gpu.clock_info(Clock::SM).unwrap(),
-    //     gpu.clock_info(Clock::Video).unwrap(),
-    //     gpu.temperature(TemperatureSensor::Gpu).unwrap(),
-    //     format_bytes(gpu.memory_info().unwrap().free as f64),
-    //     format_bytes(gpu.memory_info().unwrap().used as f64),
-    //     format_bytes(gpu.memory_info().unwrap().total as f64),
-    //     gpu.power_usage().unwrap_or_default() / 1000,
-    //     gpu.enforced_power_limit().unwrap_or_default() / 1000,
-    //     gpu.fan_speed(0).unwrap_or_default(),
-    //     gpu.fan_speed(1).unwrap_or_default(),
-    // );
-
-    // text += &format!("{:#?}\n", appdata.ohw_info);
-
-    // let sys = System::new();
-    // text += &format!("cpu temp: {} °C", sys.cpu_load().unwrap().done().unwrap()[0].platform.);
-
     show_cpu(appdata, ui);
-    show_processes(appdata, ui);
-    show_ping(appdata, ui);
     show_gpu(appdata, ui);
     add_drives_section(appdata, ui);
+    show_network(appdata, ui);
+    show_ping(appdata, ui);
+    show_processes(appdata, ui);
 
-    let mut text = String::new();
+    ui.separator();
+}
 
-    // Network interfaces name, data received and data transmitted:
-    text += "\n=> networks:\n";
-    for (interface_name, data) in appdata
+fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
+    for (interface_name, data) in filter_networks(appdata) {
+        // clock_video: u32,
+
+        ui.push_id(format!("network graph {interface_name}"), |ui| {
+            let table = TableBuilder::new(ui)
+                .striped(true)
+                .columns(Column::exact((SIZE.x - 10.0) * 0.4), 2);
+            table.header(10.0, |mut header| {
+                header.col(|ui| {
+                    ui.add(
+                        Label::new(RichText::new(format!("⬆ {}", format_bytes(data.tx))))
+                            .wrap(false),
+                    );
+                });
+                header.col(|ui| {
+                    ui.add(
+                        Label::new(RichText::new(format!("⬇ {}", format_bytes(data.rx))))
+                            .wrap(false),
+                    );
+                });
+            });
+        });
+
+        let up_buffer = appdata.net_up_buffer.get(&interface_name).unwrap();
+        let up = up_buffer.read();
+
+        let up_line = Line::new(
+            (0..up_buffer.capacity())
+                .map(|i| [i as f64, { up[i] }])
+                .collect::<PlotPoints>(),
+        );
+
+        let down_buffer = appdata.net_down_buffer.get(&interface_name).unwrap();
+        let down = down_buffer.read();
+
+        let down_line = Line::new(
+            (0..down_buffer.capacity())
+                .map(|i| [i as f64, { down[i] }])
+                .collect::<PlotPoints>(),
+        );
+
+        add_graph(
+            "network",
+            ui,
+            vec![down_line, up_line],
+            14.0 * 1024.0 * 1024.0,
+        );
+
+        // Grid::new("network_grid")
+        //     .num_columns(2)
+        //     .spacing([2.0, 2.0])
+        //     .striped(true)
+        //     .show(ui, |ui| {
+        //         ui.label(
+        //             RichText::new(format!("⬆ {}", format_bytes(data.transmitted() as f64)))
+        //                 .small()
+        //                 .strong(),
+        //         );
+        //         ui.label(
+        //             RichText::new(format!("⬇ {}", format_bytes(data.received() as f64)))
+        //                 .small()
+        //                 .strong(),
+        //         );
+        //         ui.end_row();
+        //     });
+    }
+    ui.separator();
+    step_timing(appdata, crate::CurrentStep::Network);
+}
+
+fn filter_networks(appdata: &mut MyApp) -> Vec<(String, MyNetworkData)> {
+    appdata
         .system_status
         .networks()
         .iter()
         .filter(|i| i.0 == "Ethernet 2")
-    {
-        text += &format!(
-            "{}:\n⬆ {}\n⬇ {}\n",
-            interface_name,
-            format_bytes(data.transmitted() as f64),
-            format_bytes(data.received() as f64),
-        );
-    }
-    step_timing(appdata, crate::CurrentStep::Network);
-
-    // text += &format!("{:?}", appdata.gpu);
-    // step_timing(appdata, crate::CurrentStep::GPU);
-
-    ui.label(text);
-    ui.separator();
+        .map(|(n, d)| {
+            (
+                n.to_string(),
+                MyNetworkData {
+                    tx: d.transmitted() as f64,
+                    rx: d.received() as f64,
+                },
+            )
+        })
+        .collect_vec()
 }
 
 #[derive(Default, Debug, Clone)]
 #[allow(dead_code)]
 pub struct GpuData {
     utilization: f32,
-    // clock_graphics: u32,
-    // clock_memory: u32,
-    // clock_sm: u32,
-    // clock_video: u32,
     temperature: f32,
     memory_free: f32,
     memory_used: f32,
@@ -157,12 +191,6 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
     let mut text = String::new();
     timing_to_str(appdata.current_frame_start, &mut text); // 96
 
-    // let gpu = appdata.nvid_info.device_by_index(0)?;
-    // timing_to_str(appdata.current_frame_start, &mut text); // 105
-
-    // let utilization = gpu.utilization_rates()?.gpu;
-    // timing_to_str(appdata.current_frame_start, &mut text); // 585
-
     let mut utilization = 0.0;
     let mut temperature = 0.0;
     let mut fan_percentage = 0.0;
@@ -179,7 +207,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
         let gpu = appdata.nvid_info.device_by_index(0).unwrap();
         power_limit = gpu.enforced_power_limit().unwrap() as f32 / 1000.0;
     }
-    timing_to_str(appdata.current_frame_start, &mut text); // 3910
+    timing_to_str(appdata.current_frame_start, &mut text);
 
     let ohw = appdata.ohw_info.lock();
     if let Some(ohw) = ohw.as_ref() {
@@ -189,7 +217,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
             .find(|n| n.ImageURL == "images_icon/nvidia.png")
             .unwrap()
             .Children;
-        timing_to_str(appdata.current_frame_start, &mut text); // 3910
+        timing_to_str(appdata.current_frame_start, &mut text);
 
         temperature = nodes
             .iter()
@@ -203,7 +231,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
             .replace(',', ".")
             .parse::<f32>()
             .unwrap();
-        timing_to_str(appdata.current_frame_start, &mut text); // 3910
+        timing_to_str(appdata.current_frame_start, &mut text);
 
         power_usage = nodes.iter().find(|n| n.Text == "Powers").unwrap().Children[0]
             .Value
@@ -213,7 +241,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
             .replace(',', ".")
             .parse::<f32>()
             .unwrap();
-        timing_to_str(appdata.current_frame_start, &mut text); // 3910
+        timing_to_str(appdata.current_frame_start, &mut text);
 
         memory_free = nodes.iter().find(|n| n.Text == "Data").unwrap().Children[0]
             .Value
@@ -225,7 +253,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
             .unwrap()
             * 1024.0
             * 1024.0;
-        timing_to_str(appdata.current_frame_start, &mut text); // 3910
+        timing_to_str(appdata.current_frame_start, &mut text);
 
         memory_used = nodes.iter().find(|n| n.Text == "Data").unwrap().Children[1]
             .Value
@@ -237,7 +265,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
             .unwrap()
             * 1024.0
             * 1024.0;
-        timing_to_str(appdata.current_frame_start, &mut text); // 3910
+        timing_to_str(appdata.current_frame_start, &mut text);
 
         memory_total = nodes.iter().find(|n| n.Text == "Data").unwrap().Children[2]
             .Value
@@ -249,7 +277,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
             .unwrap()
             * 1024.0
             * 1024.0;
-        timing_to_str(appdata.current_frame_start, &mut text); // 3910
+        timing_to_str(appdata.current_frame_start, &mut text);
 
         fan_percentage = nodes
             .iter()
@@ -263,7 +291,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
             .replace(',', ".")
             .parse::<f32>()
             .unwrap();
-        timing_to_str(appdata.current_frame_start, &mut text); // 3910
+        timing_to_str(appdata.current_frame_start, &mut text);
 
         utilization = nodes.iter().find(|n| n.Text == "Load").unwrap().Children[0]
             .Value
@@ -273,7 +301,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
             .replace(',', ".")
             .parse::<f32>()
             .unwrap();
-        timing_to_str(appdata.current_frame_start, &mut text); // 3910
+        timing_to_str(appdata.current_frame_start, &mut text);
 
         clock_mhz = nodes.iter().find(|n| n.Text == "Clocks").unwrap().Children[0]
             .Value
@@ -283,44 +311,12 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
             .replace(',', ".")
             .parse::<f32>()
             .unwrap();
-        timing_to_str(appdata.current_frame_start, &mut text); // 3910
+        timing_to_str(appdata.current_frame_start, &mut text);
     };
     drop(ohw);
 
-    // let clock_graphics = gpu.clock_info(Clock::Graphics)?;
-    // timing_to_str(appdata.current_frame_start, &mut text); // 839
-
-    // let clock_memory = gpu.clock_info(Clock::Memory)?;
-    // timing_to_str(appdata.current_frame_start, &mut text); // 960
-
-    // let clock_sm = gpu.clock_info(Clock::SM)?;
-    // timing_to_str(appdata.current_frame_start, &mut text); // 1069
-
-    // let clock_video = gpu.clock_info(Clock::Video)?;
-    // timing_to_str(appdata.current_frame_start, &mut text); // 1177
-
-    // let temperature = gpu.temperature(TemperatureSensor::Gpu)?;
-
-    // timing_to_str(appdata.current_frame_start, &mut text);
-    // let gpu_memory = gpu.memory_info()?;
-    // let memory_free = gpu_memory.free;
-    // timing_to_str(appdata.current_frame_start, &mut text); // 3500
-    // let memory_used = gpu_memory.used;
-    // timing_to_str(appdata.current_frame_start, &mut text); //
-    // let memory_total = gpu_memory.total;
-    // timing_to_str(appdata.current_frame_start, &mut text); //
-
-    // let power_usage = gpu.power_usage()? / 1000;
-    // timing_to_str(appdata.current_frame_start, &mut text); // 3800
-    // let power_limit = gpu.enforced_power_limit()? / 1000;
-    // timing_to_str(appdata.current_frame_start, &mut text); // 3910
-
     let g = GpuData {
         utilization,
-        // clock_graphics,
-        // clock_memory,
-        // clock_sm,
-        // clock_video,
         temperature,
         memory_free,
         memory_used,
@@ -330,13 +326,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
         fan_percentage,
         clock_mhz,
     };
-    timing_to_str(appdata.current_frame_start, &mut text); // 4267
-
-    // for i in 0..gpu.num_fans()? {
-    //     g.fan_speeds.push(gpu.fan_speed(i)?);
-    //     timing_to_str(appdata.current_frame_start, &mut text); // 4552
-    //                                                            // 9557, 10231
-    // }
+    timing_to_str(appdata.current_frame_start, &mut text);
 
     if MEASURE_PERFORMANCE && appdata.framecount < PERFORMANCE_FRAMES {
         println!("{text}");
@@ -402,7 +392,7 @@ fn show_ping(appdata: &mut MyApp, ui: &mut Ui) {
     );
 
     ui.label(format!("M: {max_ping:.0}ms, C: {last_ping:.0} ms"));
-    add_graph("ping", ui, line, 50.0);
+    add_graph("ping", ui, vec![line], 50.0);
     step_timing(appdata, crate::CurrentStep::Ping);
     ui.separator();
 }
@@ -438,9 +428,6 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
     };
 
     drop(ohw_opt);
-    // for (i, n) in coretemps {
-    //     text += &format!("Core {i}: {}\n", n.Value);
-    // }
 
     step_timing(appdata, crate::CurrentStep::CpuCrunch);
     ui.spacing_mut().interact_size = [15.0, 12.0].into();
@@ -501,7 +488,7 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
     );
 
     step_timing(appdata, crate::CurrentStep::CPU);
-    add_graph("cpu", ui, line, 100.5);
+    add_graph("cpu", ui, vec![line], 100.5);
     step_timing(appdata, crate::CurrentStep::CPUGraph);
 
     ui.separator();
@@ -509,6 +496,7 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
 
 fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
     ui.label(format!("{:?}", appdata.gpu));
+    ui.separator();
 }
 
 #[derive(PartialEq, Eq)]
@@ -627,7 +615,7 @@ fn add_process_table(
     ui.separator();
 }
 
-fn add_graph(id: &str, ui: &mut Ui, line: Line, max_y: f64) {
+fn add_graph(id: &str, ui: &mut Ui, line: Vec<Line>, max_y: f64) {
     Plot::new(id)
         .show_axes([true, true])
         .label_formatter(|_, _| "".to_string())
@@ -645,7 +633,11 @@ fn add_graph(id: &str, ui: &mut Ui, line: Line, max_y: f64) {
         .include_y(0.0)
         .include_y(max_y)
         .set_margin_fraction(Vec2::ZERO)
-        .show(ui, |plot_ui| plot_ui.line(line));
+        .show(ui, |plot_ui| {
+            for l in line {
+                plot_ui.line(l)
+            }
+        });
 }
 
 fn add_drives_section(appdata: &MyApp, ui: &mut Ui) {
@@ -746,7 +738,6 @@ pub fn get_windows_glass_color() -> Color32 {
     let mut opaque: BOOL = BOOL(0);
     unsafe {
         DwmGetColorizationColor(&mut col, &mut opaque).unwrap();
-        // let bytes1: [u8; 4] = dbg!(GetSysColor(SYS_COLOR_INDEX(5)).to_le_bytes());
     }
     let bytes: [u8; 4] = col.to_be_bytes();
     Color32::from_rgba_premultiplied(
@@ -755,9 +746,6 @@ pub fn get_windows_glass_color() -> Color32 {
         darken(bytes[3]),
         bytes[0],
     )
-
-    // out = out.linear_multiply(1.2);
-    // out
 }
 
 fn darken(v: u8) -> u8 {
@@ -837,11 +825,31 @@ pub fn refresh(appdata: &mut MyApp) {
     refresh_system_memory(appdata);
     // appdata.system_status.refresh_memory();
     step_timing(appdata, CurrentStep::UpdateSystemMemory);
-    appdata.system_status.refresh_networks();
+    refresh_networks(appdata);
     step_timing(appdata, CurrentStep::UpdateSystemNetwork);
 
     refresh_disk_io_time(appdata);
     step_timing(appdata, CurrentStep::UpdateIoTime);
+}
+pub struct MyNetworkData {
+    tx: f64,
+    rx: f64,
+}
+
+fn refresh_networks(appdata: &mut MyApp) {
+    appdata.system_status.refresh_networks();
+    for (name, data) in filter_networks(appdata) {
+        let e = appdata
+            .net_down_buffer
+            .entry(name.clone())
+            .or_insert(CircleVec::new(100));
+        e.add(data.rx);
+        let e = appdata
+            .net_up_buffer
+            .entry(name.clone())
+            .or_insert(CircleVec::new(100));
+        e.add(data.tx);
+    }
 }
 
 fn refresh_system_memory(appdata: &mut MyApp) {
