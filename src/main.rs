@@ -59,10 +59,8 @@ fn main() -> Result<(), eframe::Error> {
 
     dbg!(MEASURE_PERFORMANCE);
 
-    // let (tx, rx): (Sender<std::time::Duration>, Receiver<std::time::Duration>) = mpsc::channel();
-    // let (mut prod, cons) = SharedRb::<u128, Vec<_>>::new(100).split();
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let ping_buffer = CircleVec::<u128>::new(100);
+    let ping_buffer = CircleVec::<u64>::new(100);
     let thread_pb = ping_buffer.clone();
     let ohw_info: Arc<Mutex<Option<OHWNode>>> = Default::default();
     let thread_ohw = ohw_info.clone();
@@ -71,12 +69,7 @@ fn main() -> Result<(), eframe::Error> {
         let ekko = Ekko::with_target([8, 8, 8, 8]).unwrap();
         loop {
             if let EkkoResponse::Destination(res) = ekko.send(32).unwrap() {
-                // tx.send(res.elapsed).unwrap();
-                // println!("Ping answer received: {:?}", res.elapsed);
-                // if prod.free_len() = 0 {
-                //     // prod.
-                // }
-                thread_pb.add(res.elapsed.as_millis());
+                thread_pb.add(res.elapsed.as_millis() as u64);
             }
             thread::sleep(
                 Duration::milliseconds(
@@ -115,7 +108,8 @@ fn main() -> Result<(), eframe::Error> {
         last_ping_time: Default::default(),
         windows_performance_query_handle: 0,
         disk_time_value_handle_map: Default::default(),
-        cpu_buffer: CircleVec::<f32>::new(100),
+        cpu_buffer: CircleVec::new(100),
+        ram_buffer: CircleVec::new(100),
         nvid_info: Nvml::init().unwrap(),
         ohw_info,
         rt,
@@ -133,6 +127,9 @@ fn main() -> Result<(), eframe::Error> {
         total_ram: 0.0,
         net_up_buffer: Default::default(),
         net_down_buffer: Default::default(),
+        gpu_buffer: CircleVec::new(100),
+        gpu_mem_buffer: CircleVec::new(100),
+        gpu_pow_buffer: CircleVec::new(100),
     };
 
     init_system(&mut appstate);
@@ -207,8 +204,9 @@ pub struct MyApp {
     pub system_status: System,
     pub next_update: NaiveDateTime,
     pub next_process_update: NaiveDateTime,
-    pub ping_buffer: Arc<CircleVec<u128>>,
+    pub ping_buffer: Arc<CircleVec<u64>>,
     pub cpu_buffer: Arc<CircleVec<f32>>,
+    pub ram_buffer: Arc<CircleVec<f32>>,
     pub last_ping_time: std::time::Duration,
     pub windows_performance_query_handle: isize,
     pub disk_time_value_handle_map: Vec<(String, isize, f64)>,
@@ -223,6 +221,9 @@ pub struct MyApp {
     pub total_ram: f32,
     pub net_up_buffer: HashMap<String, Arc<CircleVec<f64>>>,
     pub net_down_buffer: HashMap<String, Arc<CircleVec<f64>>>,
+    pub gpu_buffer: Arc<CircleVec<f64>>,
+    pub gpu_mem_buffer: Arc<CircleVec<f64>>,
+    pub gpu_pow_buffer: Arc<CircleVec<f64>>,
 }
 
 impl eframe::App for MyApp {

@@ -13,6 +13,7 @@ enum EdgyProgressBarText {
 pub struct EdgyProgressBar {
     progress: f32,
     desired_width: Option<f32>,
+    desired_height: Option<f32>,
     text: Option<EdgyProgressBarText>,
     fill: Option<Color32>,
     animate: bool,
@@ -24,6 +25,7 @@ impl EdgyProgressBar {
         Self {
             progress: progress.clamp(0.0, 1.0),
             desired_width: None,
+            desired_height: None,
             text: None,
             fill: None,
             animate: false,
@@ -33,6 +35,13 @@ impl EdgyProgressBar {
     /// The desired width of the bar. Will use all horizontal space if not set.
     pub fn desired_width(mut self, desired_width: f32) -> Self {
         self.desired_width = Some(desired_width);
+        self
+    }
+
+    /// The desired height of the bar. Will use ui.spacing().interact_size.y if not set.
+    #[allow(dead_code)]
+    pub fn desired_height(mut self, desired_height: f32) -> Self {
+        self.desired_height = Some(desired_height);
         self
     }
 
@@ -71,6 +80,7 @@ impl Widget for EdgyProgressBar {
         let EdgyProgressBar {
             progress,
             desired_width,
+            desired_height,
             text,
             fill,
             animate,
@@ -80,15 +90,11 @@ impl Widget for EdgyProgressBar {
 
         let desired_width =
             desired_width.unwrap_or_else(|| ui.available_size_before_wrap().x.at_least(96.0));
-        let height = ui.spacing().interact_size.y;
+        let height = desired_height.unwrap_or(ui.spacing().interact_size.y);
         let (outer_rect, response) =
             ui.allocate_exact_size(vec2(desired_width, height), Sense::hover());
 
         if ui.is_rect_visible(response.rect) {
-            // if animate {
-            //     ui.ctx().request_repaint();
-            // }
-
             let visuals = ui.style().visuals.clone();
             ui.painter().rect(
                 outer_rect,
@@ -118,31 +124,14 @@ impl Widget for EdgyProgressBar {
                 Stroke::NONE,
             );
 
-            // if animate {
-            //     let n_points = 20;
-            //     let time = ui.input(|i| i.time);
-            //     let start_angle = time * std::f64::consts::TAU;
-            //     let end_angle = start_angle + 240f64.to_radians() * time.sin();
-            //     let circle_radius = rounding - 2.0;
-            //     let points: Vec<Pos2> = (0..n_points)
-            //         .map(|i| {
-            //             let angle = lerp(start_angle..=end_angle, i as f64 / n_points as f64);
-            //             let (sin, cos) = angle.sin_cos();
-            //             inner_rect.right_center()
-            //                 + circle_radius * vec2(cos as f32, sin as f32)
-            //                 + vec2(-rounding, 0.0)
-            //         })
-            //         .collect();
-            //     ui.painter()
-            //         .add(Shape::line(points, Stroke::new(2.0, visuals.text_color())));
-            // }
-
             if let Some(text_kind) = text {
                 let text = match text_kind {
                     EdgyProgressBarText::Custom(text) => text,
-                    EdgyProgressBarText::Percentage => {
-                        format!("{}%", (progress * 100.0) as usize).into()
-                    }
+                    EdgyProgressBarText::Percentage => WidgetText::RichText(
+                        RichText::new(format!("{}%", (progress * 100.0) as usize))
+                            .small()
+                            .strong(),
+                    ),
                 };
                 let galley = text.into_galley(ui, Some(false), f32::INFINITY, TextStyle::Button);
                 let text_pos = outer_rect.left_center() - Vec2::new(0.0, galley.size().y / 2.0)

@@ -1,7 +1,5 @@
-use std::{
-    sync::{Arc, Mutex},
-    vec::Vec,
-};
+use parking_lot::Mutex;
+use std::{sync::Arc, vec::Vec};
 
 pub struct CircleVec<T> {
     capacity: usize,
@@ -27,7 +25,7 @@ impl<T: Clone + Default> CircleVec<T> {
     }
 
     pub fn add(&self, value: T) {
-        let mut inner = self.inner_vec.lock().unwrap();
+        let mut inner = self.inner_vec.lock();
         let p = inner.pointer;
         inner.vec[p] = value;
         inner.pointer += 1;
@@ -37,7 +35,7 @@ impl<T: Clone + Default> CircleVec<T> {
     }
 
     pub fn read(&self) -> Vec<T> {
-        let inner = self.inner_vec.lock().unwrap();
+        let inner = self.inner_vec.lock();
         let mut out: Vec<T> = Vec::with_capacity(self.capacity);
         out.extend_from_slice(&inner.vec[inner.pointer..self.capacity]);
         out.extend_from_slice(&inner.vec[0..inner.pointer]);

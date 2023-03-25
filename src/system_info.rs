@@ -57,9 +57,6 @@ impl Add for Proc {
 
 pub fn set_system_info_components(appdata: &mut MyApp, ui: &mut Ui) {
     let now = chrono::Local::now();
-    // ui.heading(text)
-
-    // ui.heading(format!("{}", now.format("%d.%m.%Y")));
     ui.vertical_centered(|ui| {
         ui.heading(RichText::new(now.format("%H:%M:%S").to_string()).strong())
     });
@@ -72,11 +69,11 @@ pub fn set_system_info_components(appdata: &mut MyApp, ui: &mut Ui) {
     show_network(appdata, ui);
     show_ping(appdata, ui);
     show_processes(appdata, ui);
-
-    ui.separator();
 }
 
 fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
+    ui.vertical_centered(|ui| ui.label("Net"));
+
     for (interface_name, data) in filter_networks(appdata) {
         // clock_video: u32,
 
@@ -118,30 +115,14 @@ fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
                 .collect::<PlotPoints>(),
         );
 
+        ui.add_space(3.0);
+
         add_graph(
             "network",
             ui,
             vec![down_line, up_line],
             14.0 * 1024.0 * 1024.0,
         );
-
-        // Grid::new("network_grid")
-        //     .num_columns(2)
-        //     .spacing([2.0, 2.0])
-        //     .striped(true)
-        //     .show(ui, |ui| {
-        //         ui.label(
-        //             RichText::new(format!("⬆ {}", format_bytes(data.transmitted() as f64)))
-        //                 .small()
-        //                 .strong(),
-        //         );
-        //         ui.label(
-        //             RichText::new(format!("⬇ {}", format_bytes(data.received() as f64)))
-        //                 .small()
-        //                 .strong(),
-        //         );
-        //         ui.end_row();
-        //     });
     }
     ui.separator();
     step_timing(appdata, crate::CurrentStep::Network);
@@ -168,7 +149,7 @@ fn filter_networks(appdata: &mut MyApp) -> Vec<(String, MyNetworkData)> {
 #[derive(Default, Debug, Clone)]
 #[allow(dead_code)]
 pub struct GpuData {
-    utilization: f32,
+    utilization: f64,
     temperature: f32,
     memory_free: f32,
     memory_used: f32,
@@ -299,7 +280,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
             .next()
             .unwrap()
             .replace(',', ".")
-            .parse::<f32>()
+            .parse::<f64>()
             .unwrap();
         timing_to_str(appdata.current_frame_start, &mut text);
 
@@ -328,6 +309,14 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
     };
     timing_to_str(appdata.current_frame_start, &mut text);
 
+    appdata.gpu_buffer.add(g.utilization);
+    appdata
+        .gpu_mem_buffer
+        .add((g.memory_used / g.memory_total) as f64);
+    appdata
+        .gpu_pow_buffer
+        .add((g.power_usage / g.power_limit) as f64);
+
     if MEASURE_PERFORMANCE && appdata.framecount < PERFORMANCE_FRAMES {
         println!("{text}");
     }
@@ -336,6 +325,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
 }
 
 fn show_processes(appdata: &mut MyApp, ui: &mut Ui) {
+    ui.vertical_centered(|ui| ui.label("Processes"));
     let num_cpus = appdata.system_status.cpus().len();
     // Processes
     let mut processes = appdata
@@ -382,6 +372,7 @@ fn show_processes(appdata: &mut MyApp, ui: &mut Ui) {
 }
 
 fn show_ping(appdata: &mut MyApp, ui: &mut Ui) {
+    ui.vertical_centered(|ui| ui.label("Ping"));
     let pings = appdata.ping_buffer.read();
     let last_ping = pings.last().copied().unwrap_or_default();
     let max_ping = pings.iter().max().copied().unwrap_or_default();
@@ -398,6 +389,8 @@ fn show_ping(appdata: &mut MyApp, ui: &mut Ui) {
 }
 
 fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
+    ui.vertical_centered(|ui| ui.label("CPU"));
+
     let ohw_opt = appdata.ohw_info.lock();
     let coretemps = if let Some(ohw) = ohw_opt.as_ref() {
         ohw.Children[0]
@@ -481,21 +474,127 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
             }
         });
 
-    let line = Line::new(
-        (0..appdata.ping_buffer.capacity())
+    let cpu_line = Line::new(
+        (0..appdata.cpu_buffer.capacity())
             .map(|i| [i as f64, { cpu[i] as f64 }])
             .collect::<PlotPoints>(),
     );
 
+    let ram = appdata.ram_buffer.read();
+    let ram_line = Line::new(
+        (0..appdata.ram_buffer.capacity())
+            .map(|i| [i as f64, { ram[i] as f64 * 100.0 }])
+            .collect::<PlotPoints>(),
+    );
+
     step_timing(appdata, crate::CurrentStep::CPU);
-    add_graph("cpu", ui, vec![line], 100.5);
+    add_graph("cpu", ui, vec![cpu_line, ram_line], 100.5);
     step_timing(appdata, crate::CurrentStep::CPUGraph);
 
     ui.separator();
 }
 
 fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
-    ui.label(format!("{:?}", appdata.gpu));
+    ui.vertical_centered(|ui| ui.label("GPU"));
+    ui.add(
+        EdgyProgressBar::new(appdata.gpu.as_ref().unwrap().utilization as f32 / 100.0).text(
+            RichText::new(format!(
+                "GPU: {:.1}%",
+                appdata.gpu.as_ref().unwrap().utilization
+            ))
+            .small()
+            .strong(),
+        ),
+    );
+
+    ui.add(
+        EdgyProgressBar::new(
+            appdata.gpu.as_ref().unwrap().memory_used / appdata.gpu.as_ref().unwrap().memory_total,
+        )
+        .text(
+            RichText::new(format!(
+                "Mem: {} / {}",
+                format_bytes(appdata.gpu.as_ref().unwrap().memory_used as f64),
+                format_bytes(appdata.gpu.as_ref().unwrap().memory_total as f64)
+            ))
+            .small()
+            .strong(),
+        ),
+    );
+
+    ui.add(
+        EdgyProgressBar::new(
+            appdata.gpu.as_ref().unwrap().power_usage / appdata.gpu.as_ref().unwrap().power_limit,
+        )
+        .text(
+            RichText::new(format!(
+                "POW: {:.0}W / {:.0}W",
+                appdata.gpu.as_ref().unwrap().power_usage,
+                appdata.gpu.as_ref().unwrap().power_limit
+            ))
+            .small()
+            .strong(),
+        ),
+    );
+
+    ui.push_id("gpu table", |ui| {
+        let table = TableBuilder::new(ui)
+            .striped(true)
+            .columns(Column::exact((SIZE.x * 0.5) - 9.5), 2);
+
+        table.body(|mut body| {
+            body.row(12.0, |mut row| {
+                // Clock
+                row.col(|ui| {
+                    ui.label(
+                        RichText::new(format!(
+                            "{:.0} MHz",
+                            appdata.gpu.as_ref().unwrap().clock_mhz
+                        ))
+                        .small()
+                        .strong(),
+                    );
+                });
+                // temp
+                row.col(|ui| {
+                    ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                        ui.label(
+                            RichText::new(format!(
+                                "{:.0} °C",
+                                appdata.gpu.as_ref().unwrap().temperature
+                            ))
+                            .small()
+                            .strong(),
+                        );
+                    });
+                });
+            });
+        });
+    });
+
+    let gpu_buf = appdata.gpu_buffer.read();
+    let gpu_line = Line::new(
+        (0..appdata.gpu_buffer.capacity())
+            .map(|i| [i as f64, { gpu_buf[i] }])
+            .collect::<PlotPoints>(),
+    );
+
+    let mem_buf = appdata.gpu_mem_buffer.read();
+    let mem_line = Line::new(
+        (0..appdata.gpu_mem_buffer.capacity())
+            .map(|i| [i as f64, { mem_buf[i] * 100.0 }])
+            .collect::<PlotPoints>(),
+    );
+
+    let pow_buf = appdata.gpu_pow_buffer.read();
+    let pow_line = Line::new(
+        (0..appdata.gpu_pow_buffer.capacity())
+            .map(|i| [i as f64, { pow_buf[i] * 100.0 }])
+            .collect::<PlotPoints>(),
+    );
+
+    add_graph("gpu", ui, vec![gpu_line, mem_line, pow_line], 100.0);
+
     ui.separator();
 }
 
@@ -641,6 +740,7 @@ fn add_graph(id: &str, ui: &mut Ui, line: Vec<Line>, max_y: f64) {
 }
 
 fn add_drives_section(appdata: &MyApp, ui: &mut Ui) {
+    ui.vertical_centered(|ui| ui.label("Drives"));
     ui.spacing_mut().interact_size = [15.0, 12.0].into();
     Grid::new("drive_grid")
         .num_columns(2)
@@ -903,6 +1003,7 @@ fn refresh_system_memory(appdata: &mut MyApp) {
     if appdata.total_ram == 0.0 {
         appdata.total_ram = tot_ram;
     }
+    appdata.ram_buffer.add(cur_ram / appdata.total_ram);
 }
 
 fn refresh_cpu(appdata: &mut MyApp) {
