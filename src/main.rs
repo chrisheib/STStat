@@ -1,10 +1,7 @@
 //! Show a custom window frame instead of the default OS window chrome decorations.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-use std::{
-    sync::{Arc, Mutex},
-    thread,
-};
+use std::{fs::File, io::BufWriter, sync::Arc, thread, time::Instant};
 
 use chrono::{Duration, Local, NaiveDateTime};
 use circlevec::CircleVec;
@@ -14,8 +11,9 @@ use eframe::{
 };
 use ekko::{Ekko, EkkoResponse};
 use nvml_wrapper::Nvml;
+use parking_lot::Mutex;
 use sidebar::dispose_sidebar;
-use sysinfo::{System, SystemExt};
+use sysinfo::{ProcessRefreshKind, System, SystemExt};
 use system_info::{get_windows_glass_color, init_system, refresh, GpuData, OHWNode};
 use tokio::{runtime::Runtime, time::sleep};
 
@@ -29,6 +27,8 @@ mod system_info;
 // On read problems, run: lodctr /r
 
 pub const UPDATE_INTERVAL_MILLIS: i64 = 1000;
+pub const MEASURE_PERFORMANCE: bool = false;
+pub const PERFORMANCE_FRAMES: u64 = 50;
 
 // Right Screen, Left side
 // pub const SIZE: egui::Vec2 = egui::Vec2 {
@@ -56,6 +56,8 @@ fn main() -> Result<(), eframe::Error> {
         std::process::exit(0);
     })
     .expect("Error setting Ctrl-C handler");
+
+    dbg!(MEASURE_PERFORMANCE);
 
     // let (tx, rx): (Sender<std::time::Duration>, Receiver<std::time::Duration>) = mpsc::channel();
     // let (mut prod, cons) = SharedRb::<u128, Vec<_>>::new(100).split();
@@ -99,7 +101,7 @@ fn main() -> Result<(), eframe::Error> {
         initial_window_size: Some(SIZE),
         initial_window_pos: Some(POS),
         drag_and_drop_support: false,
-        vsync: true,
+        vsync: false,
         ..Default::default()
     };
 
@@ -109,8 +111,8 @@ fn main() -> Result<(), eframe::Error> {
         firstupdate: false,
         create_frame: 0,
         framecount: 0,
-        last_update_timestamp: Default::default(),
         next_update: Default::default(),
+        next_process_update: Default::default(),
         last_ping_time: Default::default(),
         windows_performance_query_handle: 0,
         disk_time_value_handle_map: Default::default(),
@@ -119,6 +121,17 @@ fn main() -> Result<(), eframe::Error> {
         ohw_info,
         rt,
         gpu: None,
+        timing: {
+            let mut v = Vec::default();
+            if MEASURE_PERFORMANCE {
+                v.resize_with(10000, || (CurrentStep::None, std::time::Duration::ZERO));
+            }
+            v
+        },
+        current_frame_start: Instant::now(),
+        step: 0,
+        cur_ram: 0.0,
+        total_ram: 0.0,
     };
 
     init_system(&mut appstate);
@@ -144,12 +157,12 @@ async fn ohw_thread(thread_ohw: Arc<Mutex<Option<OHWNode>>>) -> ! {
     loop {
         if let Ok(data) = reqwest::get("http://localhost:8085/data.json").await {
             if let Ok(data) = data.json::<OHWNode>().await {
-                *thread_ohw.lock().unwrap() = Some(data)
+                *thread_ohw.lock() = Some(data)
             } else {
-                *thread_ohw.lock().unwrap() = None
+                *thread_ohw.lock() = None
             }
         } else {
-            *thread_ohw.lock().unwrap() = None
+            *thread_ohw.lock() = None
         };
         sleep(
             Duration::milliseconds(
@@ -164,13 +177,35 @@ async fn ohw_thread(thread_ohw: Arc<Mutex<Option<OHWNode>>>) -> ! {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum CurrentStep {
+    None,
+    Begin,
+    UpdateCPU,
+    UpdateGPU,
+    UpdateSystemDisk,
+    UpdateSystemMemory,
+    UpdateSystemNetwork,
+    UpdateSystemProcess,
+    UpdateIoTime,
+    Update,
+    CpuCrunch,
+    CPU,
+    CPUGraph,
+    ProcCPU,
+    ProcRAM,
+    Ping,
+    Network,
+    GPU,
+}
+
 pub struct MyApp {
     pub firstupdate: bool,
     pub create_frame: u64,
     pub framecount: u64,
     pub system_status: System,
-    pub last_update_timestamp: NaiveDateTime,
     pub next_update: NaiveDateTime,
+    pub next_process_update: NaiveDateTime,
     pub ping_buffer: Arc<CircleVec<u128>>,
     pub cpu_buffer: Arc<CircleVec<f32>>,
     pub last_ping_time: std::time::Duration,
@@ -180,6 +215,11 @@ pub struct MyApp {
     pub ohw_info: Arc<Mutex<Option<OHWNode>>>,
     pub rt: Runtime,
     pub gpu: Option<GpuData>,
+    pub timing: Vec<(CurrentStep, std::time::Duration)>,
+    pub current_frame_start: Instant,
+    pub step: usize,
+    pub cur_ram: f32,
+    pub total_ram: f32,
 }
 
 impl eframe::App for MyApp {
@@ -188,12 +228,22 @@ impl eframe::App for MyApp {
     }
 
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        self.current_frame_start = Instant::now();
+        step_timing(self, CurrentStep::Begin);
         let now = Local::now().naive_local();
         if now > self.next_update {
             refresh(self);
-            self.last_update_timestamp = now;
+            step_timing(self, CurrentStep::Update);
             self.next_update =
                 now + Duration::milliseconds(1000i64 - now.timestamp_subsec_millis() as i64);
+        }
+        if now > self.next_process_update {
+            self.system_status
+                .refresh_processes_specifics(ProcessRefreshKind::everything().without_disk_usage());
+            // self.system_status.refresh_processes();
+            step_timing(self, CurrentStep::UpdateSystemProcess);
+            self.next_process_update =
+                now + Duration::milliseconds(4000i64 - now.timestamp_subsec_millis() as i64);
         }
 
         self.framecount += 1;
@@ -240,6 +290,17 @@ impl eframe::App for MyApp {
             //     self.last_ping_time.as_millis()
             // ));
         });
+
+        if MEASURE_PERFORMANCE && self.framecount == PERFORMANCE_FRAMES {
+            use std::io::prelude::*;
+            let file = File::create("timings.txt").unwrap();
+            let mut file = BufWriter::new(file);
+            self.timing
+                .iter()
+                .filter(|(s, _)| s != &CurrentStep::None)
+                .for_each(|(s, d)| writeln!(&mut file, "{}: {s:?}", d.as_micros()).unwrap());
+            self.timing.clear()
+        }
     }
 }
 
@@ -367,4 +428,11 @@ fn close_maximize_minimize(ui: &mut egui::Ui, frame: &mut eframe::Frame) {
     // if minimized_response.clicked() {
     //     frame.set_minimized(true);
     // }
+}
+
+pub fn step_timing(appdata: &mut MyApp, step: CurrentStep) {
+    if MEASURE_PERFORMANCE && appdata.framecount < PERFORMANCE_FRAMES {
+        appdata.timing[appdata.step] = (step, appdata.current_frame_start.elapsed());
+        appdata.step += 1;
+    }
 }

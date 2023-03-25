@@ -2551,6 +2551,7 @@ dependencies = [
  "itertools",
  "lazy_static",
  "nvml-wrapper",
+ "parking_lot",
  "reqwest",
  "serde",
  "serde_json",
