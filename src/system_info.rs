@@ -60,7 +60,7 @@ pub fn set_system_info_components(appdata: &mut MyApp, ui: &mut Ui) {
 
     show_cpu(appdata, ui);
     show_gpu(appdata, ui);
-    add_drives_section(appdata, ui);
+    show_drives(appdata, ui);
     show_network(appdata, ui);
     show_ping(appdata, ui);
     show_processes(appdata, ui);
@@ -749,7 +749,7 @@ fn add_graph(id: &str, ui: &mut Ui, line: Vec<Line>, max_y: f64) {
         });
 }
 
-fn add_drives_section(appdata: &MyApp, ui: &mut Ui) {
+fn show_drives(appdata: &MyApp, ui: &mut Ui) {
     ui.vertical_centered(|ui| ui.label("Drives"));
     ui.spacing_mut().interact_size = [15.0, 12.0].into();
     Grid::new("drive_grid")
@@ -789,6 +789,20 @@ fn add_drives_section(appdata: &MyApp, ui: &mut Ui) {
                 ui.end_row();
             }
         });
+    ui.spacing();
+
+    let mut lines = Vec::new();
+    for (_, diskbuffer) in &appdata.disk_buffer {
+        let values = diskbuffer.read();
+        lines.push(Line::new(
+            (0..diskbuffer.capacity())
+                .map(|i| [i as f64, { values[i] as f64 }])
+                .collect::<PlotPoints>(),
+        ));
+    }
+
+    add_graph("disk", ui, lines, 100.5);
+
     ui.separator();
 }
 
@@ -796,10 +810,15 @@ fn refresh_disk_io_time(appdata: &mut MyApp) {
     unsafe {
         // Siehe: https://learn.microsoft.com/en-us/windows/win32/perfctrs/pdh-error-codes
         PdhCollectQueryData(appdata.windows_performance_query_handle);
-        for (_d, handle, value) in &mut appdata.disk_time_value_handle_map {
+        for (d, handle, value) in &mut appdata.disk_time_value_handle_map {
             let mut new_value = Default::default();
             PdhGetFormattedCounterValue(*handle, PDH_FMT_DOUBLE, None, &mut new_value);
             *value = new_value.Anonymous.doubleValue;
+            appdata
+                .disk_buffer
+                .entry(d.clone())
+                .or_insert(CircleVec::new(100))
+                .add(*value);
         }
     }
 }

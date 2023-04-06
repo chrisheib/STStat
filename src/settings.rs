@@ -4,7 +4,6 @@ use display_info::DisplayInfo;
 use eframe::egui::{DragValue, Ui};
 use serde::{Deserialize, Serialize};
 use sysinfo::SystemExt;
-use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CYFULLSCREEN};
 
 use crate::{
     sidebar::{dispose_sidebar, setup_sidebar},
@@ -51,7 +50,6 @@ impl MySettings {
 }
 
 pub fn show_settings(appdata: &mut MyApp, ui: &mut Ui) {
-    println!("1");
     let mut settings = appdata.settings.lock();
     if settings.current_settings != settings.loaded_settings {
         if settings.current_settings.display_right != settings.loaded_settings.display_right
@@ -88,14 +86,13 @@ pub fn show_settings(appdata: &mut MyApp, ui: &mut Ui) {
     drop(settings);
 }
 
-/// Returns X, Y, Width, Height
 pub fn get_screen_size(appdata: &MyApp) {
     let mut settings = appdata.settings.lock();
-    let workarea_height = unsafe { GetSystemMetrics(SM_CYFULLSCREEN) };
+    // let workarea_height = dbg!(unsafe { GetSystemMetrics(SM_CYFULLSCREEN) });
 
     let display_infos = DisplayInfo::all().unwrap();
     // for display_info in &display_infos {
-    //   println!("display_info {display_info:?}");
+    //     println!("display_info {display_info:?}");
     // }
 
     let maindisplay = display_infos
@@ -104,8 +101,11 @@ pub fn get_screen_size(appdata: &MyApp) {
         .expect("Es sollte einen primären Monitor geben");
 
     let mainscale = maindisplay.scale_factor;
-    let main_display_height = maindisplay.scale_factor;
-    let taskbarsize_main = (main_display_height - workarea_height as f32) / mainscale;
+    // let main_display_height = maindisplay.height;
+    // let taskbarsize_main =
+    //     (dbg!(main_display_height) as f32 - dbg!(workarea_height) as f32) / dbg!(mainscale);
+    let taskbarsize_main = 48.0 * mainscale;
+    // println!("Taskbar_height: {taskbarsize_main}");
 
     let display_id;
     if settings.current_settings.screen_id < display_infos.len() {
@@ -115,23 +115,22 @@ pub fn get_screen_size(appdata: &MyApp) {
     }
 
     let target_display = display_infos[display_id];
-
     let target_taskbar_size = taskbarsize_main * target_display.scale_factor;
 
-    let sidebar_height = target_display.height - target_taskbar_size as u32;
+    let width = (SIZE.x as f32 * target_display.scale_factor) as i32;
+    let height = target_display.height as i32 - target_taskbar_size as i32;
 
-    let sidebar_x = if !settings.current_settings.display_right {
+    let x = if !settings.current_settings.display_right {
         target_display.x
     } else {
-        target_display.x + target_display.width as i32 - SIZE.x as i32
+        target_display.x + target_display.width as i32 - width
     };
-
-    let sidebar_y = target_display.y;
+    let y = target_display.y;
 
     settings.current_settings.location = Location {
-        x: sidebar_x,
-        y: sidebar_y,
-        width: (SIZE.x as f32 * target_display.scale_factor) as i32,
-        height: sidebar_height as i32,
+        x,
+        y,
+        width,
+        height,
     }
 }

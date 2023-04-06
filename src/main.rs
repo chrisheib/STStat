@@ -150,6 +150,7 @@ fn main() -> Result<(), eframe::Error> {
         gpu_pow_buffer: CircleVec::new(100),
         show_settings: false,
         settings: settings.clone(),
+        disk_buffer: Default::default(),
     };
 
     get_screen_size(&appstate);
@@ -248,6 +249,7 @@ pub struct MyApp {
     pub gpu_pow_buffer: Arc<CircleVec<f64>>,
     pub show_settings: bool,
     pub settings: Arc<Mutex<MySettings>>,
+    pub disk_buffer: HashMap<String, Arc<CircleVec<f64>>>,
 }
 
 impl eframe::App for MyApp {
@@ -321,14 +323,13 @@ impl eframe::App for MyApp {
             });
             ui.separator();
 
-            ui.checkbox(&mut self.show_settings, "Show settings");
-
-            if self.show_settings {
-                show_settings(self, ui);
-            }
-
             ScrollArea::vertical().show(ui, |ui| {
                 system_info::set_system_info_components(self, ui);
+                ui.checkbox(&mut self.show_settings, "Show settings");
+
+                if self.show_settings {
+                    show_settings(self, ui);
+                }
             });
 
             let time_to_next_second = 1000 - chrono::Local::now().timestamp_subsec_millis();
