@@ -6,7 +6,7 @@ use std::{collections::HashMap, fs::File, io::BufWriter, sync::Arc, thread, time
 use chrono::{Duration, Local, NaiveDateTime};
 use circlevec::CircleVec;
 use eframe::{
-    egui::{self, ScrollArea, Visuals, RichText},
+    egui::{self, RichText, ScrollArea, Visuals},
     epaint::Color32,
 };
 use ekko::{Ekko, EkkoResponse};
@@ -18,13 +18,15 @@ use sysinfo::{ProcessRefreshKind, System, SystemExt};
 use system_info::{get_windows_glass_color, init_system, refresh, refresh_color, GpuData, OHWNode};
 use tokio::{runtime::Runtime, time::sleep};
 
+use crate::settings::get_screen_size;
+
 mod autostart;
 mod bytes_format;
 mod circlevec;
 mod components;
+mod settings;
 mod sidebar;
 mod system_info;
-mod settings;
 
 // On read problems, run: lodctr /r
 
@@ -52,9 +54,12 @@ pub const POS: egui::Pos2 = egui::Pos2 {
 pub const EDGE: u32 = windows::Win32::UI::Shell::ABE_RIGHT;
 
 fn main() -> Result<(), eframe::Error> {
+    let settings = Arc::new(Mutex::new(MySettings::load()));
+    let cancel_settings = settings.clone();
+
     ctrlc::set_handler(move || {
         println!("received Ctrl+C, removing sidebar");
-        dispose_sidebar();
+        dispose_sidebar(cancel_settings.clone());
         std::process::exit(0);
     })
     .expect("Error setting Ctrl-C handler");
@@ -86,14 +91,25 @@ fn main() -> Result<(), eframe::Error> {
     });
     rt.spawn(ohw_thread(thread_ohw));
 
+    let s = settings.lock();
+    let initial_window_size = (
+        s.current_settings.location.width as f32,
+        s.current_settings.location.height as f32,
+    );
+    let initial_window_pos = (
+        s.current_settings.location.x as f32,
+        s.current_settings.location.y as f32,
+    );
+    drop(s);
+
     let options = eframe::NativeOptions {
         // Hide the OS-specific "chrome" around the window:
         decorated: false,
         // To have rounded corners we need transparency:
         transparent: true,
         min_window_size: Some(egui::vec2(100.0, 100.0)),
-        initial_window_size: Some(SIZE),
-        initial_window_pos: Some(POS),
+        initial_window_size: Some(initial_window_size.into()),
+        initial_window_pos: Some(initial_window_pos.into()),
         drag_and_drop_support: false,
         vsync: false,
         ..Default::default()
@@ -133,9 +149,10 @@ fn main() -> Result<(), eframe::Error> {
         gpu_mem_buffer: CircleVec::new(100),
         gpu_pow_buffer: CircleVec::new(100),
         show_settings: false,
-        settings: MySettings::load(),
-        
+        settings: settings.clone(),
     };
+
+    get_screen_size(&appstate);
 
     init_system(&mut appstate);
 
@@ -151,7 +168,7 @@ fn main() -> Result<(), eframe::Error> {
         }),
     )?;
 
-    dispose_sidebar();
+    dispose_sidebar(settings.clone());
 
     Ok(())
 }
@@ -230,7 +247,7 @@ pub struct MyApp {
     pub gpu_mem_buffer: Arc<CircleVec<f64>>,
     pub gpu_pow_buffer: Arc<CircleVec<f64>>,
     pub show_settings: bool,
-    pub settings: MySettings
+    pub settings: Arc<Mutex<MySettings>>,
 }
 
 impl eframe::App for MyApp {
@@ -261,20 +278,34 @@ impl eframe::App for MyApp {
 
         self.framecount += 1;
 
-        if frame.info().window_info.position != Some(POS) {
+        let s = self.settings.lock();
+        let pos = (
+            s.current_settings.location.x as f32,
+            s.current_settings.location.y as f32,
+        );
+        let size = (
+            s.current_settings.location.width as f32,
+            s.current_settings.location.height as f32,
+        );
+        drop(s);
+
+        if frame.info().window_info.position != Some(pos.into()) {
             println!(
                 "Position weicht ab, old: {:?}, new: {:?}",
                 frame.info().window_info.position,
-                POS
+                pos
             );
-            frame.set_window_pos(POS);
+            frame.set_window_pos(pos.into());
+            frame.set_window_size(size.into())
         }
 
         if !self.firstupdate && self.framecount > 1 {
+            println!("Setup sidebar");
             self.firstupdate = true;
             self.create_frame = self.framecount;
-            sidebar::setup_sidebar();
+            sidebar::setup_sidebar(&self);
             frame.set_window_pos(POS);
+            println!("Setup sidebar done");
         }
 
         custom_window_frame(ctx, frame, "Sidebar", |ui| {
@@ -283,13 +314,13 @@ impl eframe::App for MyApp {
             }
 
             ui.label(format!("{}", self.framecount));
-            
+
             let now = chrono::Local::now();
             ui.vertical_centered(|ui| {
                 ui.heading(RichText::new(now.format("%H:%M:%S").to_string()).strong())
             });
             ui.separator();
-    
+
             ui.checkbox(&mut self.show_settings, "Show settings");
 
             if self.show_settings {

@@ -1,6 +1,12 @@
-use std::{mem, ops::DerefMut, os::raw::c_void, sync::RwLock};
+use std::{
+    mem,
+    ops::DerefMut,
+    os::raw::c_void,
+    sync::{Arc, RwLock},
+};
 
 use lazy_static::lazy_static;
+use parking_lot::Mutex;
 use windows::{
     w,
     Win32::{
@@ -11,8 +17,8 @@ use windows::{
         },
         UI::{
             Shell::{
-                SHAppBarMessage, ABE_LEFT, ABM_NEW, ABM_QUERYPOS, ABM_REMOVE, ABM_SETPOS,
-                APPBARDATA,
+                SHAppBarMessage, ABE_LEFT, ABE_RIGHT, ABM_NEW, ABM_QUERYPOS, ABM_REMOVE,
+                ABM_SETPOS, APPBARDATA,
             },
             WindowsAndMessaging::{
                 FindWindowW, GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_APPWINDOW,
@@ -22,7 +28,7 @@ use windows::{
     },
 };
 
-use crate::{EDGE, POS, SIZE};
+use crate::{settings::MySettings, MyApp};
 
 lazy_static! {
     pub static ref STATIC_HWND: RwLock<HWND> = HWND(0).into();
@@ -49,7 +55,7 @@ lazy_static! {
 //     return_hwnd: Option<HWND>,
 // }
 
-pub(crate) fn setup_sidebar() {
+pub(crate) fn setup_sidebar(appdata: &MyApp) {
     // find handle: enum active windows, find window with my process id
     // let pid = std::process::id();
 
@@ -76,10 +82,14 @@ pub(crate) fn setup_sidebar() {
 
     *STATIC_HWND.write().unwrap().deref_mut() = hwnd;
 
+    let settings = appdata.settings.lock();
+
+    let location = &settings.current_settings.location;
+
     let rect = RECT {
-        left: POS.x as i32,
+        left: location.x,
         top: 0,
-        right: POS.x as i32 + SIZE.x as i32,
+        right: location.x + location.width,
         bottom: i32::MAX,
     };
 
@@ -89,7 +99,11 @@ pub(crate) fn setup_sidebar() {
         cbSize: mem::size_of::<APPBARDATA>() as u32,
         hWnd: hwnd,
         uCallbackMessage: 0,
-        uEdge: EDGE,
+        uEdge: if settings.current_settings.display_right {
+            ABE_RIGHT
+        } else {
+            ABE_LEFT
+        },
         rc: rect,
         lParam: lparam,
     };
@@ -121,14 +135,16 @@ pub(crate) fn setup_sidebar() {
     set_window_unpeekable(hwnd);
 }
 
-pub fn dispose_sidebar() {
+pub fn dispose_sidebar(settings: Arc<Mutex<MySettings>>) {
+    let settings = settings.lock();
+
     let hwnd = *STATIC_HWND.read().unwrap();
 
     let rect = RECT {
-        left: 0,
+        left: settings.current_settings.location.x,
         top: 0,
-        right: 150,
-        bottom: 10000,
+        right: settings.current_settings.location.x + settings.current_settings.location.width,
+        bottom: i32::MAX,
     };
 
     let lparam = LPARAM(0);
@@ -137,7 +153,11 @@ pub fn dispose_sidebar() {
         cbSize: mem::size_of::<APPBARDATA>() as u32,
         hWnd: hwnd,
         uCallbackMessage: 0,
-        uEdge: ABE_LEFT,
+        uEdge: if settings.current_settings.display_right {
+            ABE_RIGHT
+        } else {
+            ABE_LEFT
+        },
         rc: rect,
         lParam: lparam,
     };

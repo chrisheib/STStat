@@ -92,7 +92,10 @@ fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
             });
         });
 
-        let up_buffer = appdata.net_up_buffer.entry(interface_name.clone()).or_insert(CircleVec::new(100));
+        let up_buffer = appdata
+            .net_up_buffer
+            .entry(interface_name.clone())
+            .or_insert(CircleVec::new(100));
         let up = up_buffer.read();
 
         let up_line = Line::new(
@@ -101,7 +104,10 @@ fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
                 .collect::<PlotPoints>(),
         );
 
-        let down_buffer = appdata.net_down_buffer.entry(interface_name.clone()).or_insert(CircleVec::new(100));
+        let down_buffer = appdata
+            .net_down_buffer
+            .entry(interface_name.clone())
+            .or_insert(CircleVec::new(100));
         let down = down_buffer.read();
 
         let down_line = Line::new(
@@ -128,7 +134,16 @@ fn filter_networks(appdata: &mut MyApp) -> Vec<(String, MyNetworkData)> {
         .system_status
         .networks()
         .iter()
-        .filter(|i| appdata.settings.current_settings.networks.entry(i.0.to_string()).or_default().clone())
+        .filter(|i| {
+            appdata
+                .settings
+                .lock()
+                .current_settings
+                .networks
+                .entry(i.0.to_string())
+                .or_default()
+                .clone()
+        })
         .map(|(n, d)| {
             (
                 n.to_string(),
