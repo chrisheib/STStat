@@ -6,15 +6,16 @@ use std::{collections::HashMap, fs::File, io::BufWriter, sync::Arc, thread, time
 use chrono::{Duration, Local, NaiveDateTime};
 use circlevec::CircleVec;
 use eframe::{
-    egui::{self, ScrollArea, Visuals},
+    egui::{self, ScrollArea, Visuals, RichText},
     epaint::Color32,
 };
 use ekko::{Ekko, EkkoResponse};
 use nvml_wrapper::Nvml;
 use parking_lot::Mutex;
+use settings::{show_settings, MySettings};
 use sidebar::dispose_sidebar;
 use sysinfo::{ProcessRefreshKind, System, SystemExt};
-use system_info::{get_windows_glass_color, init_system, refresh, GpuData, OHWNode};
+use system_info::{get_windows_glass_color, init_system, refresh, refresh_color, GpuData, OHWNode};
 use tokio::{runtime::Runtime, time::sleep};
 
 mod autostart;
@@ -23,6 +24,7 @@ mod circlevec;
 mod components;
 mod sidebar;
 mod system_info;
+mod settings;
 
 // On read problems, run: lodctr /r
 
@@ -130,6 +132,9 @@ fn main() -> Result<(), eframe::Error> {
         gpu_buffer: CircleVec::new(100),
         gpu_mem_buffer: CircleVec::new(100),
         gpu_pow_buffer: CircleVec::new(100),
+        show_settings: false,
+        settings: MySettings::load(),
+        
     };
 
     init_system(&mut appstate);
@@ -224,6 +229,8 @@ pub struct MyApp {
     pub gpu_buffer: Arc<CircleVec<f64>>,
     pub gpu_mem_buffer: Arc<CircleVec<f64>>,
     pub gpu_pow_buffer: Arc<CircleVec<f64>>,
+    pub show_settings: bool,
+    pub settings: MySettings
 }
 
 impl eframe::App for MyApp {
@@ -235,16 +242,18 @@ impl eframe::App for MyApp {
         self.current_frame_start = Instant::now();
         step_timing(self, CurrentStep::Begin);
         let now = Local::now().naive_local();
+        let mut update = false;
         if now > self.next_update {
             refresh(self);
             step_timing(self, CurrentStep::Update);
             self.next_update =
                 now + Duration::milliseconds(1000i64 - now.timestamp_subsec_millis() as i64);
+            update = true;
         }
+
         if now > self.next_process_update {
             self.system_status
                 .refresh_processes_specifics(ProcessRefreshKind::everything().without_disk_usage());
-            // self.system_status.refresh_processes();
             step_timing(self, CurrentStep::UpdateSystemProcess);
             self.next_process_update =
                 now + Duration::milliseconds(4000i64 - now.timestamp_subsec_millis() as i64);
@@ -269,12 +278,24 @@ impl eframe::App for MyApp {
         }
 
         custom_window_frame(ctx, frame, "Sidebar", |ui| {
-            // ui.label("This is just the contents of the window.");
-            // ui.vertical_centered(|ui| {
-            //     ui.label("egui theme:");
-            //     egui::widgets::global_dark_light_mode_buttons(ui);
-            // });
+            if update {
+                refresh_color(ui);
+            }
+
             ui.label(format!("{}", self.framecount));
+            
+            let now = chrono::Local::now();
+            ui.vertical_centered(|ui| {
+                ui.heading(RichText::new(now.format("%H:%M:%S").to_string()).strong())
+            });
+            ui.separator();
+    
+            ui.checkbox(&mut self.show_settings, "Show settings");
+
+            if self.show_settings {
+                show_settings(self, ui);
+            }
+
             ScrollArea::vertical().show(ui, |ui| {
                 system_info::set_system_info_components(self, ui);
             });
@@ -399,7 +420,7 @@ fn title_bar_ui(
 
 /// Show some close/maximize/minimize buttons for the native window.
 fn close_maximize_minimize(ui: &mut egui::Ui, frame: &mut eframe::Frame) {
-    use egui::{Button, RichText};
+    use egui::Button;
 
     let button_height = 12.0;
 

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="sidebar_rs" Version="1.0.0" Manufacturer="ChrisHeib" UpgradeCode="d6ca5305-9dda-4175-9a91-15e1d816fd41" Language="1031">
+    <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate />
+
+    <Property Id="LAUNCHAPP" Value="0" />
+
+    <Feature Id="ProductFeature" Title="sidebar_rs" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+    </Feature>
+  </Product>
+
+  <Fragment>
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="sidebar_rs">
+          <Component Id="ApplicationFiles" Guid="22ccc9bb-88ff-44a2-89b1-3e03ddc82dc6">
+            <File Id="YourAppExe" Source=".\target\release\sidebar_slint.exe" KeyPath="yes" />
+          </Component>
+        </Directory>
+      </Directory>
+    </Directory>
+  </Fragment>
+
+  <Fragment>
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      <ComponentRef Id="ApplicationFiles"/>
+    </ComponentGroup>
+  </Fragment>
+
+  <Fragment>
+    <UI>
+      <UIRef Id="WixUI_Minimal" />
+      <Publish Dialog="ExitDialog"
+        Control="Finish"
+        Event="DoAction"
+        Value="LaunchApplication">WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed
+      </Publish>
+    </UI>
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch My Application Name" />
+  </Fragment>
+
+  <Fragment>
+    <Property Id="WixShellExecTarget" Value="[#myapplication.exe]" />
+    <CustomAction Id="LaunchApplication"
+        BinaryKey="WixCA"
+        DllEntry="WixShellExec"
+        Impersonate="yes" />
+  </Fragment>
+</Wix>

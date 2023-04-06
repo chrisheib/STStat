@@ -56,11 +56,6 @@ impl Add for Proc {
 }
 
 pub fn set_system_info_components(appdata: &mut MyApp, ui: &mut Ui) {
-    let now = chrono::Local::now();
-    ui.vertical_centered(|ui| {
-        ui.heading(RichText::new(now.format("%H:%M:%S").to_string()).strong())
-    });
-    ui.separator();
     step_timing(appdata, crate::CurrentStep::Begin);
 
     show_cpu(appdata, ui);
@@ -97,7 +92,7 @@ fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
             });
         });
 
-        let up_buffer = appdata.net_up_buffer.get(&interface_name).unwrap();
+        let up_buffer = appdata.net_up_buffer.entry(interface_name.clone()).or_insert(CircleVec::new(100));
         let up = up_buffer.read();
 
         let up_line = Line::new(
@@ -106,7 +101,7 @@ fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
                 .collect::<PlotPoints>(),
         );
 
-        let down_buffer = appdata.net_down_buffer.get(&interface_name).unwrap();
+        let down_buffer = appdata.net_down_buffer.entry(interface_name.clone()).or_insert(CircleVec::new(100));
         let down = down_buffer.read();
 
         let down_line = Line::new(
@@ -133,7 +128,7 @@ fn filter_networks(appdata: &mut MyApp) -> Vec<(String, MyNetworkData)> {
         .system_status
         .networks()
         .iter()
-        .filter(|i| i.0 == "Ethernet 2")
+        .filter(|i| appdata.settings.current_settings.networks.entry(i.0.to_string()).or_default().clone())
         .map(|(n, d)| {
             (
                 n.to_string(),
@@ -923,7 +918,6 @@ pub fn refresh(appdata: &mut MyApp) {
     appdata.system_status.refresh_disks();
     step_timing(appdata, CurrentStep::UpdateSystemDisk);
     refresh_system_memory(appdata);
-    // appdata.system_status.refresh_memory();
     step_timing(appdata, CurrentStep::UpdateSystemMemory);
     refresh_networks(appdata);
     step_timing(appdata, CurrentStep::UpdateSystemNetwork);
@@ -931,6 +925,13 @@ pub fn refresh(appdata: &mut MyApp) {
     refresh_disk_io_time(appdata);
     step_timing(appdata, CurrentStep::UpdateIoTime);
 }
+
+pub fn refresh_color(ui: &mut Ui) {
+    let v = ui.visuals_mut();
+    v.override_text_color = Some(Color32::from_gray(250));
+    v.window_fill = get_windows_glass_color();
+}
+
 pub struct MyNetworkData {
     tx: f64,
     rx: f64,

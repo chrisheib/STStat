@@ -1,2 +1,7 @@
 /target
 /timings.txt
+*.cab
+*.json
+*.msi
+*.wixobj
+*.wixpdb
