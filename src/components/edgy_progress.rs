@@ -17,6 +17,7 @@ pub struct EdgyProgressBar {
     text: Option<EdgyProgressBarText>,
     fill: Option<Color32>,
     animate: bool,
+    colored_dot: Option<Color32>,
 }
 
 impl EdgyProgressBar {
@@ -29,6 +30,7 @@ impl EdgyProgressBar {
             text: None,
             fill: None,
             animate: false,
+            colored_dot: None,
         }
     }
 
@@ -73,6 +75,14 @@ impl EdgyProgressBar {
         self.animate = animate;
         self
     }
+
+    /// When `Some`: Places a colored dot in front of the text.
+    /// Defaults to `None`.
+    #[allow(dead_code)]
+    pub fn colored_dot(mut self, colored_dot: Option<Color32>) -> Self {
+        self.colored_dot = colored_dot;
+        self
+    }
 }
 
 impl Widget for EdgyProgressBar {
@@ -84,13 +94,14 @@ impl Widget for EdgyProgressBar {
             text,
             fill,
             animate,
+            colored_dot,
         } = self;
 
         // let animate = animate && progress < 1.0;
 
         let desired_width =
             desired_width.unwrap_or_else(|| ui.available_size_before_wrap().x.at_least(96.0));
-        let height = desired_height.unwrap_or(ui.spacing().interact_size.y);
+        let height = desired_height.unwrap_or(12.0);
         let (outer_rect, response) =
             ui.allocate_exact_size(vec2(desired_width, height), Sense::hover());
 
@@ -125,6 +136,18 @@ impl Widget for EdgyProgressBar {
             );
 
             if let Some(text_kind) = text {
+                if let Some(dc) = self.colored_dot {
+                    let dot_text = WidgetText::RichText(RichText::new("⏺").size(8.0));
+                    let galley = dot_text.into_galley(ui, Some(false), 8.0, TextStyle::Button);
+                    let text_pos = outer_rect.left_center() - Vec2::new(0.0, galley.size().y / 2.0)
+                        + vec2(3.0, 0.0);
+                    galley.paint_with_color_override(
+                        &ui.painter().with_clip_rect(outer_rect),
+                        text_pos,
+                        dc,
+                    );
+                }
+
                 let text = match text_kind {
                     EdgyProgressBarText::Custom(text) => text,
                     EdgyProgressBarText::Percentage => WidgetText::RichText(
@@ -133,9 +156,12 @@ impl Widget for EdgyProgressBar {
                             .strong(),
                     ),
                 };
+
+                let dot_space = if colored_dot.is_some() { 10.0 } else { 0.0 };
                 let galley = text.into_galley(ui, Some(false), f32::INFINITY, TextStyle::Button);
                 let text_pos = outer_rect.left_center() - Vec2::new(0.0, galley.size().y / 2.0)
-                    + vec2(ui.spacing().item_spacing.x / 2.0, 0.0);
+                    + vec2(ui.spacing().item_spacing.x / 2.0, 0.0)
+                    + vec2(dot_space, 0.0);
                 let text_color = visuals
                     .override_text_color
                     .unwrap_or(visuals.selection.stroke.color);

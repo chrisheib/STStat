@@ -443,34 +443,44 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
     let cpu = appdata.cpu_buffer.read();
     let last_cpu = cpu.last().copied().unwrap_or_default();
 
-    ui.add(
-        EdgyProgressBar::new(last_cpu / 100.0).text(
-            RichText::new(format!(
-                "CPU: {last_cpu:.1}%{}",
-                if max_temp > 0.0 {
-                    format!("   {max_temp:.1} °C")
-                } else {
-                    "".to_string()
-                }
-            ))
-            .small()
-            .strong(),
-        ),
-    );
+    Grid::new("cpu_grid_upper")
+        .num_columns(2)
+        .spacing([2.0, 2.0])
+        .striped(true)
+        .show(ui, |ui| {
+            ui.add(
+                EdgyProgressBar::new(last_cpu / 100.0)
+                    .text(
+                        RichText::new(format!("CPU: {last_cpu:.1}%",))
+                            .small()
+                            .strong(),
+                    )
+                    .desired_width(SIZE.x / 2.0 - 5.0)
+                    .colored_dot(Some(auto_color(0))),
+            );
+            ui.add(
+                EdgyProgressBar::new(max_temp / 100.0)
+                    .text(RichText::new(format!("{max_temp:.1} °C")).small().strong())
+                    .desired_width(SIZE.x / 2.0 - 5.0)
+                    .colored_dot(Some(auto_color(2))),
+            );
+        });
 
     ui.add(
-        EdgyProgressBar::new(appdata.cur_ram / appdata.total_ram).text(
-            RichText::new(format!(
-                "RAM: {} / {}",
-                format_bytes(appdata.cur_ram as f64),
-                format_bytes(appdata.total_ram as f64)
-            ))
-            .small()
-            .strong(),
-        ),
+        EdgyProgressBar::new(appdata.cur_ram / appdata.total_ram)
+            .text(
+                RichText::new(format!(
+                    "RAM: {} / {}",
+                    format_bytes(appdata.cur_ram as f64),
+                    format_bytes(appdata.total_ram as f64)
+                ))
+                .small()
+                .strong(),
+            )
+            .colored_dot(Some(auto_color(1))),
     );
 
-    Grid::new("cpu_grid")
+    Grid::new("cpu_grid_cores")
         .num_columns(2)
         .spacing([2.0, 2.0])
         .striped(true)
@@ -525,14 +535,16 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
 fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
     ui.vertical_centered(|ui| ui.label("GPU"));
     ui.add(
-        EdgyProgressBar::new(appdata.gpu.as_ref().unwrap().utilization as f32 / 100.0).text(
-            RichText::new(format!(
-                "GPU: {:.1}%",
-                appdata.gpu.as_ref().unwrap().utilization
-            ))
-            .small()
-            .strong(),
-        ),
+        EdgyProgressBar::new(appdata.gpu.as_ref().unwrap().utilization as f32 / 100.0)
+            .text(
+                RichText::new(format!(
+                    "GPU: {:.1}%",
+                    appdata.gpu.as_ref().unwrap().utilization
+                ))
+                .small()
+                .strong(),
+            )
+            .colored_dot(Some(auto_color(0))),
     );
 
     ui.add(
@@ -547,7 +559,8 @@ fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
             ))
             .small()
             .strong(),
-        ),
+        )
+        .colored_dot(Some(auto_color(1))),
     );
 
     ui.add(
@@ -562,7 +575,8 @@ fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
             ))
             .small()
             .strong(),
-        ),
+        )
+        .colored_dot(Some(auto_color(2))),
     );
 
     ui.push_id("gpu table", |ui| {
@@ -844,7 +858,7 @@ fn show_drives(appdata: &MyApp, ui: &mut Ui) {
                         ),
                     );
                     ui.add(Label::new(
-                        RichText::new("⏺").small().color(auto_color(i as i32)),
+                        RichText::new("⏺").size(8.0).color(auto_color(i as i32)),
                     ));
                 });
                 ui.end_row();
