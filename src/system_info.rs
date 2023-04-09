@@ -1,6 +1,7 @@
 use crate::{
-    bytes_format::format_bytes, circlevec::CircleVec, components::edgy_progress::EdgyProgressBar,
-    sidebar::STATIC_HWND, step_timing, CurrentStep, MyApp, SIZE,
+    bytes_format::format_bytes, circlevec::CircleVec, color::auto_color,
+    components::edgy_progress::EdgyProgressBar, sidebar::STATIC_HWND, step_timing, CurrentStep,
+    MyApp, SIZE,
 };
 use eframe::{
     egui::{
@@ -431,6 +432,9 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
         vec![]
     };
 
+    let max_temp_line = appdata.cpu_maxtemp_buffer.read();
+    let max_temp = max_temp_line.last().copied().unwrap_or_default();
+
     drop(ohw_opt);
 
     step_timing(appdata, crate::CurrentStep::CpuCrunch);
@@ -441,9 +445,16 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
 
     ui.add(
         EdgyProgressBar::new(last_cpu / 100.0).text(
-            RichText::new(format!("CPU: {last_cpu:.1}%",))
-                .small()
-                .strong(),
+            RichText::new(format!(
+                "CPU: {last_cpu:.1}%{}",
+                if max_temp > 0.0 {
+                    format!("   {max_temp:.1} °C")
+                } else {
+                    "".to_string()
+                }
+            ))
+            .small()
+            .strong(),
         ),
     );
 
@@ -498,8 +509,14 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
             .collect::<PlotPoints>(),
     );
 
+    let temp_line = Line::new(
+        (0..appdata.cpu_maxtemp_buffer.capacity())
+            .map(|i| [i as f64, { max_temp_line[i] as f64 }])
+            .collect::<PlotPoints>(),
+    );
+
     step_timing(appdata, crate::CurrentStep::CPU);
-    add_graph("cpu", ui, vec![cpu_line, ram_line], 100.5);
+    add_graph("cpu", ui, vec![cpu_line, ram_line, temp_line], 100.5);
     step_timing(appdata, crate::CurrentStep::CPUGraph);
 
     ui.separator();
@@ -790,13 +807,13 @@ fn add_graph(id: &str, ui: &mut Ui, line: Vec<Line>, max_y: f64) {
 
 fn show_drives(appdata: &MyApp, ui: &mut Ui) {
     ui.vertical_centered(|ui| ui.label("Drives"));
-    ui.spacing_mut().interact_size = [15.0, 12.0].into();
     Grid::new("drive_grid")
+        .spacing([2.0, 2.0])
         .num_columns(2)
-        .spacing([2.0, 4.0])
         .striped(true)
         .show(ui, |ui| {
-            for d in appdata.system_status.disks() {
+            for (i, d) in appdata.system_status.disks().iter().enumerate() {
+                ui.spacing_mut().interact_size = [15.0, 12.0].into();
                 let mount = d.mount_point().to_str().unwrap().replace('\\', "");
                 let (_, _, value) = appdata
                     .disk_time_value_handle_map
@@ -814,7 +831,9 @@ fn show_drives(appdata: &MyApp, ui: &mut Ui) {
                         EdgyProgressBar::new(
                             (d.total_space() - d.available_space()) as f32 / d.total_space() as f32,
                         )
-                        .desired_width(SIZE.x * 0.6)
+                        .desired_width(
+                            appdata.settings.lock().current_settings.location.width as f32 * 0.5,
+                        )
                         .text(
                             RichText::new(format!(
                                 "Free: {}",
@@ -823,7 +842,10 @@ fn show_drives(appdata: &MyApp, ui: &mut Ui) {
                             .small()
                             .strong(),
                         ),
-                    )
+                    );
+                    ui.add(Label::new(
+                        RichText::new("⏺").small().color(auto_color(i as i32)),
+                    ));
                 });
                 ui.end_row();
             }
@@ -1085,6 +1107,49 @@ fn refresh_cpu(appdata: &mut MyApp) {
     appdata
         .cpu_buffer
         .add(appdata.system_status.global_cpu_info().cpu_usage());
+
+    let ohw_opt = appdata.ohw_info.lock();
+    let coretemps = if let Some(ohw) = ohw_opt.as_ref() {
+        ohw.Children[0]
+            .Children
+            .iter()
+            .find(|n| n.ImageURL == "images_icon/cpu.png")
+            .unwrap()
+            .Children
+            .iter()
+            .find(|n| n.Text == "Temperatures")
+            .unwrap()
+            .Children
+            .iter()
+            .filter_map(|n| {
+                if n.Text.contains("CPU Core #") {
+                    if let Ok(val) = n.Text.replace("CPU Core #", "").parse::<i32>() {
+                        Some((val, n.to_owned()))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect_vec()
+    } else {
+        vec![]
+    };
+
+    let max_temp = coretemps
+        .iter()
+        .map(|(_, node)| {
+            node.Value
+                .replace("°C", "")
+                .replace(",", ".")
+                .trim()
+                .parse::<f32>()
+                .unwrap_or_default()
+        })
+        .max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap());
+
+    appdata.cpu_maxtemp_buffer.add(max_temp.unwrap_or(0.0));
 }
 
 #[derive(Deserialize, Default, Debug, Clone)]

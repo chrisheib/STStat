@@ -29,6 +29,7 @@ use crate::settings::get_screen_size;
 mod autostart;
 mod bytes_format;
 mod circlevec;
+mod color;
 mod components;
 mod settings;
 mod sidebar;
@@ -134,6 +135,7 @@ fn main() -> Result<(), eframe::Error> {
         windows_performance_query_handle: 0,
         disk_time_value_handle_map: Default::default(),
         cpu_buffer: CircleVec::new(),
+        cpu_maxtemp_buffer: CircleVec::new(),
         ram_buffer: CircleVec::new(),
         nvid_info: Nvml::init().unwrap(),
         ohw_info,
@@ -237,6 +239,7 @@ pub struct MyApp {
     pub next_process_update: NaiveDateTime,
     pub ping_buffer: Arc<CircleVec<u64, 100>>,
     pub cpu_buffer: Arc<CircleVec<f32, 100>>,
+    pub cpu_maxtemp_buffer: Arc<CircleVec<f32, 100>>,
     pub ram_buffer: Arc<CircleVec<f32, 100>>,
     pub last_ping_time: std::time::Duration,
     pub windows_performance_query_handle: isize,
