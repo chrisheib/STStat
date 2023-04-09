@@ -1,22 +1,25 @@
 use parking_lot::Mutex;
-use std::{sync::Arc, vec::Vec};
+use std::{fmt::Debug, sync::Arc, vec::Vec};
 
-pub struct CircleVec<T> {
+pub struct CircleVec<T, const N: usize> {
     capacity: usize,
-    inner_vec: Mutex<InnerVec<T>>,
+    inner_vec: Mutex<InnerVec<T, N>>,
 }
 
-pub struct InnerVec<T> {
-    vec: Vec<T>,
+pub struct InnerVec<T, const N: usize> {
+    vec: [T; N],
     pointer: usize,
 }
 
-impl<T: Clone + Default> CircleVec<T> {
-    pub fn new(capacity: usize) -> Arc<Self> {
-        let mut inner = Vec::<T>::with_capacity(capacity);
-        inner.resize_with(capacity, Default::default);
+impl<T: Clone + Default + Copy + Debug, const N: usize> CircleVec<T, N> {
+    pub fn new() -> Arc<Self> {
+        // let mut inner = Vec::<T>::with_capacity(capacity);
+        // inner.resize_with(capacity, Default::default);
+
+        let inner = [Default::default(); N];
+
         Arc::new(Self {
-            capacity,
+            capacity: N,
             inner_vec: Mutex::new(InnerVec {
                 vec: inner,
                 pointer: 0,

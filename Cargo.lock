@@ -2568,30 +2568,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "43b2853a4d09f215c24cc5489c992ce46052d359b5109343cbafbf26bc62f8a3"
 
 [[package]]
-name = "sidebar_slint"
-version = "0.1.0"
-dependencies = [
- "active-win-pos-rs",
- "chrono",
- "ctrlc",
- "display-info",
- "eframe",
- "egui_extras",
- "ekko",
- "itertools",
- "lazy_static",
- "nvml-wrapper",
- "parking_lot",
- "reqwest",
- "serde",
- "serde_json",
- "sysinfo",
- "tokio",
- "windows 0.46.0",
- "winreg 0.11.0",
-]
-
-[[package]]
 name = "signal-hook-registry"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2692,6 +2668,30 @@ name = "strsim"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6446ced80d6c486436db5c078dde11a9f73d42b57fb273121e160b84f63d894c"
+
+[[package]]
+name = "ststat"
+version = "0.1.0"
+dependencies = [
+ "active-win-pos-rs",
+ "chrono",
+ "ctrlc",
+ "display-info",
+ "eframe",
+ "egui_extras",
+ "ekko",
+ "itertools",
+ "lazy_static",
+ "nvml-wrapper",
+ "parking_lot",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sysinfo",
+ "tokio",
+ "windows 0.46.0",
+ "winreg 0.11.0",
+]
 
 [[package]]
 name = "syn"

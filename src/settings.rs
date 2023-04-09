@@ -1,4 +1,8 @@
-use std::{collections::HashMap, fs};
+use std::{
+    collections::HashMap,
+    fs::{self, File},
+    io::BufWriter,
+};
 
 use display_info::DisplayInfo;
 use eframe::egui::{DragValue, Ui};
@@ -7,7 +11,7 @@ use sysinfo::SystemExt;
 
 use crate::{
     sidebar::{dispose_sidebar, setup_sidebar},
-    MyApp, SIZE,
+    CurrentStep, MyApp, SIZE,
 };
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Clone)]
@@ -22,6 +26,7 @@ pub struct InnerSettings {
     pub display_right: bool,
     pub screen_id: usize,
     pub location: Location,
+    pub track_timings: bool,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Clone)]
@@ -83,6 +88,18 @@ pub fn show_settings(appdata: &mut MyApp, ui: &mut Ui) {
         "Display on right side:",
     );
     ui.separator();
+    ui.checkbox(&mut settings.current_settings.track_timings, "trace perf");
+    if ui.button("save trace").clicked() {
+        use std::io::prelude::*;
+        let file = File::create("timings.txt").unwrap();
+        let mut file = BufWriter::new(file);
+        appdata
+            .timing
+            .read()
+            .iter()
+            .filter(|s| s.step != CurrentStep::None)
+            .for_each(|s| writeln!(&mut file, "{}: {:?}", s.time.as_micros(), s.step).unwrap());
+    }
     drop(settings);
 }
 

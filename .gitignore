@@ -5,3 +5,4 @@
 *.msi
 *.wixobj
 *.wixpdb
+error.txt

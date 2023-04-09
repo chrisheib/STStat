@@ -1,7 +1,13 @@
 //! Show a custom window frame instead of the default OS window chrome decorations.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-use std::{collections::HashMap, fs::File, io::BufWriter, sync::Arc, thread, time::Instant};
+use std::{
+    collections::HashMap,
+    panic::{self},
+    sync::Arc,
+    thread,
+    time::Instant,
+};
 
 use chrono::{Duration, Local, NaiveDateTime};
 use circlevec::CircleVec;
@@ -31,8 +37,6 @@ mod system_info;
 // On read problems, run: lodctr /r
 
 pub const UPDATE_INTERVAL_MILLIS: i64 = 1000;
-pub const MEASURE_PERFORMANCE: bool = false;
-pub const PERFORMANCE_FRAMES: u64 = 50;
 
 // Right Screen, Left side
 // pub const SIZE: egui::Vec2 = egui::Vec2 {
@@ -54,6 +58,11 @@ pub const POS: egui::Pos2 = egui::Pos2 {
 pub const EDGE: u32 = windows::Win32::UI::Shell::ABE_RIGHT;
 
 fn main() -> Result<(), eframe::Error> {
+    panic::set_hook(Box::new(|p| {
+        println!("Custom panic hook: {p}");
+        std::fs::write("error.txt", format!("{p}")).unwrap_or_default();
+    }));
+
     let settings = Arc::new(Mutex::new(MySettings::load()));
     let cancel_settings = settings.clone();
 
@@ -64,10 +73,8 @@ fn main() -> Result<(), eframe::Error> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    dbg!(MEASURE_PERFORMANCE);
-
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let ping_buffer = CircleVec::<u64>::new(100);
+    let ping_buffer = CircleVec::<u64, 100>::new();
     let thread_pb = ping_buffer.clone();
     let ohw_info: Arc<Mutex<Option<OHWNode>>> = Default::default();
     let thread_ohw = ohw_info.clone();
@@ -126,28 +133,22 @@ fn main() -> Result<(), eframe::Error> {
         last_ping_time: Default::default(),
         windows_performance_query_handle: 0,
         disk_time_value_handle_map: Default::default(),
-        cpu_buffer: CircleVec::new(100),
-        ram_buffer: CircleVec::new(100),
+        cpu_buffer: CircleVec::new(),
+        ram_buffer: CircleVec::new(),
         nvid_info: Nvml::init().unwrap(),
         ohw_info,
         rt,
         gpu: None,
-        timing: {
-            let mut v = Vec::default();
-            if MEASURE_PERFORMANCE {
-                v.resize_with(10000, || (CurrentStep::None, std::time::Duration::ZERO));
-            }
-            v
-        },
+        timing: CircleVec::new(),
         current_frame_start: Instant::now(),
         step: 0,
         cur_ram: 0.0,
         total_ram: 0.0,
         net_up_buffer: Default::default(),
         net_down_buffer: Default::default(),
-        gpu_buffer: CircleVec::new(100),
-        gpu_mem_buffer: CircleVec::new(100),
-        gpu_pow_buffer: CircleVec::new(100),
+        gpu_buffer: CircleVec::new(),
+        gpu_mem_buffer: CircleVec::new(),
+        gpu_pow_buffer: CircleVec::new(),
         show_settings: false,
         settings: settings.clone(),
         disk_buffer: Default::default(),
@@ -198,8 +199,9 @@ async fn ohw_thread(thread_ohw: Arc<Mutex<Option<OHWNode>>>) -> ! {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
 pub enum CurrentStep {
+    #[default]
     None,
     Begin,
     UpdateCPU,
@@ -220,6 +222,12 @@ pub enum CurrentStep {
     GPU,
 }
 
+#[derive(Debug, Default, Clone, Copy)]
+pub struct TimingStep {
+    pub step: CurrentStep,
+    pub time: std::time::Duration,
+}
+
 pub struct MyApp {
     pub firstupdate: bool,
     pub create_frame: u64,
@@ -227,9 +235,9 @@ pub struct MyApp {
     pub system_status: System,
     pub next_update: NaiveDateTime,
     pub next_process_update: NaiveDateTime,
-    pub ping_buffer: Arc<CircleVec<u64>>,
-    pub cpu_buffer: Arc<CircleVec<f32>>,
-    pub ram_buffer: Arc<CircleVec<f32>>,
+    pub ping_buffer: Arc<CircleVec<u64, 100>>,
+    pub cpu_buffer: Arc<CircleVec<f32, 100>>,
+    pub ram_buffer: Arc<CircleVec<f32, 100>>,
     pub last_ping_time: std::time::Duration,
     pub windows_performance_query_handle: isize,
     pub disk_time_value_handle_map: Vec<(String, isize, f64)>,
@@ -237,19 +245,19 @@ pub struct MyApp {
     pub ohw_info: Arc<Mutex<Option<OHWNode>>>,
     pub rt: Runtime,
     pub gpu: Option<GpuData>,
-    pub timing: Vec<(CurrentStep, std::time::Duration)>,
+    pub timing: Arc<CircleVec<TimingStep, 2000>>,
     pub current_frame_start: Instant,
     pub step: usize,
     pub cur_ram: f32,
     pub total_ram: f32,
-    pub net_up_buffer: HashMap<String, Arc<CircleVec<f64>>>,
-    pub net_down_buffer: HashMap<String, Arc<CircleVec<f64>>>,
-    pub gpu_buffer: Arc<CircleVec<f64>>,
-    pub gpu_mem_buffer: Arc<CircleVec<f64>>,
-    pub gpu_pow_buffer: Arc<CircleVec<f64>>,
+    pub net_up_buffer: HashMap<String, Arc<CircleVec<f64, 100>>>,
+    pub net_down_buffer: HashMap<String, Arc<CircleVec<f64, 100>>>,
+    pub gpu_buffer: Arc<CircleVec<f64, 100>>,
+    pub gpu_mem_buffer: Arc<CircleVec<f64, 100>>,
+    pub gpu_pow_buffer: Arc<CircleVec<f64, 100>>,
     pub show_settings: bool,
     pub settings: Arc<Mutex<MySettings>>,
-    pub disk_buffer: HashMap<String, Arc<CircleVec<f64>>>,
+    pub disk_buffer: HashMap<String, Arc<CircleVec<f64, 100>>>,
 }
 
 impl eframe::App for MyApp {
@@ -347,17 +355,6 @@ impl eframe::App for MyApp {
             //     self.last_ping_time.as_millis()
             // ));
         });
-
-        if MEASURE_PERFORMANCE && self.framecount == PERFORMANCE_FRAMES {
-            use std::io::prelude::*;
-            let file = File::create("timings.txt").unwrap();
-            let mut file = BufWriter::new(file);
-            self.timing
-                .iter()
-                .filter(|(s, _)| s != &CurrentStep::None)
-                .for_each(|(s, d)| writeln!(&mut file, "{}: {s:?}", d.as_micros()).unwrap());
-            self.timing.clear()
-        }
     }
 }
 
@@ -488,8 +485,10 @@ fn close_maximize_minimize(ui: &mut egui::Ui, frame: &mut eframe::Frame) {
 }
 
 pub fn step_timing(appdata: &mut MyApp, step: CurrentStep) {
-    if MEASURE_PERFORMANCE && appdata.framecount < PERFORMANCE_FRAMES {
-        appdata.timing[appdata.step] = (step, appdata.current_frame_start.elapsed());
-        appdata.step += 1;
+    if appdata.settings.lock().current_settings.track_timings {
+        appdata.timing.add(TimingStep {
+            step,
+            time: appdata.current_frame_start.elapsed(),
+        });
     }
 }

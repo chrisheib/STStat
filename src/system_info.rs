@@ -1,12 +1,11 @@
 use crate::{
     bytes_format::format_bytes, circlevec::CircleVec, components::edgy_progress::EdgyProgressBar,
-    sidebar::STATIC_HWND, step_timing, CurrentStep, MyApp, MEASURE_PERFORMANCE, PERFORMANCE_FRAMES,
-    SIZE,
+    sidebar::STATIC_HWND, step_timing, CurrentStep, MyApp, SIZE,
 };
 use eframe::{
     egui::{
         plot::{Line, Plot, PlotPoints},
-        Grid, Label, Layout, RichText, Ui,
+        Grid, Label, Layout, RichText, Sense, Ui,
     },
     emath::Align::{self, Max},
     epaint::{Color32, Vec2},
@@ -16,6 +15,7 @@ use itertools::Itertools;
 use serde::Deserialize;
 use std::ops::Add;
 use sysinfo::{CpuExt, DiskExt, NetworkExt, NetworksExt, ProcessExt, SystemExt};
+use tokio::process::Command;
 use windows::{
     core::{decode_utf8_char, PCWSTR, PWSTR},
     w,
@@ -95,7 +95,7 @@ fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
         let up_buffer = appdata
             .net_up_buffer
             .entry(interface_name.clone())
-            .or_insert(CircleVec::new(100));
+            .or_insert(CircleVec::new());
         let up = up_buffer.read();
 
         let up_line = Line::new(
@@ -107,7 +107,7 @@ fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
         let down_buffer = appdata
             .net_down_buffer
             .entry(interface_name.clone())
-            .or_insert(CircleVec::new(100));
+            .or_insert(CircleVec::new());
         let down = down_buffer.read();
 
         let down_line = Line::new(
@@ -170,17 +170,18 @@ pub struct GpuData {
     clock_mhz: f32,
 }
 
-fn timing_to_str(timestamp: std::time::Instant, text: &mut String) {
-    if MEASURE_PERFORMANCE {
+fn timing_to_str(timestamp: std::time::Instant, text: &mut String, perf_trace: bool) {
+    if perf_trace {
         *text += &format!("{}\n", timestamp.elapsed().as_micros());
     }
 }
 
 pub fn refresh_gpu(appdata: &mut MyApp) {
     step_timing(appdata, CurrentStep::UpdateGPU);
+    let perf_trace = appdata.settings.lock().current_settings.track_timings;
 
     let mut text = String::new();
-    timing_to_str(appdata.current_frame_start, &mut text); // 96
+    timing_to_str(appdata.current_frame_start, &mut text, perf_trace); // , 96
 
     let mut utilization = 0.0;
     let mut temperature = 0.0;
@@ -198,7 +199,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
         let gpu = appdata.nvid_info.device_by_index(0).unwrap();
         power_limit = gpu.enforced_power_limit().unwrap() as f32 / 1000.0;
     }
-    timing_to_str(appdata.current_frame_start, &mut text);
+    timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
 
     let ohw = appdata.ohw_info.lock();
     if let Some(ohw) = ohw.as_ref() {
@@ -208,7 +209,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
             .find(|n| n.ImageURL == "images_icon/nvidia.png")
             .unwrap()
             .Children;
-        timing_to_str(appdata.current_frame_start, &mut text);
+        timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
 
         temperature = nodes
             .iter()
@@ -222,7 +223,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
             .replace(',', ".")
             .parse::<f32>()
             .unwrap();
-        timing_to_str(appdata.current_frame_start, &mut text);
+        timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
 
         power_usage = nodes.iter().find(|n| n.Text == "Powers").unwrap().Children[0]
             .Value
@@ -232,7 +233,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
             .replace(',', ".")
             .parse::<f32>()
             .unwrap();
-        timing_to_str(appdata.current_frame_start, &mut text);
+        timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
 
         memory_free = nodes.iter().find(|n| n.Text == "Data").unwrap().Children[0]
             .Value
@@ -244,7 +245,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
             .unwrap()
             * 1024.0
             * 1024.0;
-        timing_to_str(appdata.current_frame_start, &mut text);
+        timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
 
         memory_used = nodes.iter().find(|n| n.Text == "Data").unwrap().Children[1]
             .Value
@@ -256,7 +257,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
             .unwrap()
             * 1024.0
             * 1024.0;
-        timing_to_str(appdata.current_frame_start, &mut text);
+        timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
 
         memory_total = nodes.iter().find(|n| n.Text == "Data").unwrap().Children[2]
             .Value
@@ -268,7 +269,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
             .unwrap()
             * 1024.0
             * 1024.0;
-        timing_to_str(appdata.current_frame_start, &mut text);
+        timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
 
         fan_percentage = nodes
             .iter()
@@ -282,7 +283,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
             .replace(',', ".")
             .parse::<f32>()
             .unwrap();
-        timing_to_str(appdata.current_frame_start, &mut text);
+        timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
 
         utilization = nodes.iter().find(|n| n.Text == "Load").unwrap().Children[0]
             .Value
@@ -292,7 +293,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
             .replace(',', ".")
             .parse::<f64>()
             .unwrap();
-        timing_to_str(appdata.current_frame_start, &mut text);
+        timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
 
         clock_mhz = nodes.iter().find(|n| n.Text == "Clocks").unwrap().Children[0]
             .Value
@@ -302,7 +303,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
             .replace(',', ".")
             .parse::<f32>()
             .unwrap();
-        timing_to_str(appdata.current_frame_start, &mut text);
+        timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
     };
     drop(ohw);
 
@@ -317,7 +318,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
         fan_percentage,
         clock_mhz,
     };
-    timing_to_str(appdata.current_frame_start, &mut text);
+    timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
 
     appdata.gpu_buffer.add(g.utilization);
     appdata
@@ -327,7 +328,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
         .gpu_pow_buffer
         .add((g.power_usage / g.power_limit) as f64);
 
-    if MEASURE_PERFORMANCE && appdata.framecount < PERFORMANCE_FRAMES {
+    if perf_trace && appdata.framecount < 1000 {
         println!("{text}");
     }
     appdata.gpu = Some(g);
@@ -623,6 +624,7 @@ fn add_process_table(
     name: &str,
     display_mode: ProcessTableDisplayMode,
 ) {
+    let mut clicked = false;
     ui.push_id(name, |ui| {
         let mut table = TableBuilder::new(ui).striped(true).column(Column::exact(
             (SIZE.x - 10.0)
@@ -644,14 +646,22 @@ fn add_process_table(
         };
         let table = table.header(10.0, |mut header| {
             header.col(|ui| {
-                ui.add(Label::new(RichText::new(name).small()).wrap(false));
+                clicked = clicked
+                    || ui
+                        .add(Label::new(RichText::new(name).small()).wrap(false))
+                        .interact(Sense::click())
+                        .double_clicked();
             });
             if display_mode == ProcessTableDisplayMode::All
                 || display_mode == ProcessTableDisplayMode::Ram
             {
                 header.col(|ui| {
                     ui.with_layout(Layout::top_down_justified(Max), |ui| {
-                        ui.add(Label::new(RichText::new("RAM").small()).wrap(false));
+                        clicked = clicked
+                            || ui
+                                .add(Label::new(RichText::new("RAM").small()).wrap(false))
+                                .interact(Sense::click())
+                                .double_clicked();
                     });
                 });
             }
@@ -660,7 +670,11 @@ fn add_process_table(
             {
                 header.col(|ui| {
                     ui.with_layout(Layout::top_down_justified(Max), |ui| {
-                        ui.add(Label::new(RichText::new("CPU").small()).wrap(false));
+                        clicked = clicked
+                            || ui
+                                .add(Label::new(RichText::new("CPU").small()).wrap(false))
+                                .interact(Sense::click())
+                                .double_clicked();
                     });
                 });
             }
@@ -669,36 +683,44 @@ fn add_process_table(
             body.rows(10.0, len, |row_index, mut row| {
                 let p = &p[row_index];
                 row.col(|ui| {
-                    ui.add(
-                        Label::new(
-                            RichText::new(format!(
-                                "{}{}",
-                                p.name,
-                                if p.count > 1 {
-                                    format!(" ×{}", p.count)
-                                } else {
-                                    "".to_string()
-                                }
-                            ))
-                            .small()
-                            .strong(),
-                        )
-                        .wrap(false),
-                    );
+                    clicked = clicked
+                        || ui
+                            .add(
+                                Label::new(
+                                    RichText::new(format!(
+                                        "{}{}",
+                                        p.name,
+                                        if p.count > 1 {
+                                            format!(" ×{}", p.count)
+                                        } else {
+                                            "".to_string()
+                                        }
+                                    ))
+                                    .small()
+                                    .strong(),
+                                )
+                                .wrap(false),
+                            )
+                            .interact(Sense::click())
+                            .double_clicked();
                 });
                 if display_mode == ProcessTableDisplayMode::All
                     || display_mode == ProcessTableDisplayMode::Ram
                 {
                     row.col(|ui| {
                         ui.with_layout(Layout::top_down_justified(Max), |ui| {
-                            ui.add(
-                                Label::new(
-                                    RichText::new(format_bytes(p.memory as f64))
-                                        .small()
-                                        .strong(),
-                                )
-                                .wrap(false),
-                            )
+                            clicked = clicked
+                                || ui
+                                    .add(
+                                        Label::new(
+                                            RichText::new(format_bytes(p.memory as f64))
+                                                .small()
+                                                .strong(),
+                                        )
+                                        .wrap(false),
+                                    )
+                                    .interact(Sense::click())
+                                    .double_clicked()
                         });
                     });
                 }
@@ -707,14 +729,21 @@ fn add_process_table(
                 {
                     row.col(|ui| {
                         ui.with_layout(Layout::top_down_justified(Max), |ui| {
-                            ui.add(
-                                Label::new(
-                                    RichText::new(format!("{:.1}%", p.cpu / num_cpus as f32))
-                                        .small()
-                                        .strong(),
-                                )
-                                .wrap(false),
-                            );
+                            clicked = clicked
+                                || ui
+                                    .add(
+                                        Label::new(
+                                            RichText::new(format!(
+                                                "{:.1}%",
+                                                p.cpu / num_cpus as f32
+                                            ))
+                                            .small()
+                                            .strong(),
+                                        )
+                                        .wrap(false),
+                                    )
+                                    .interact(Sense::click())
+                                    .double_clicked();
                         });
                     });
                 }
@@ -722,6 +751,16 @@ fn add_process_table(
         });
     });
     ui.separator();
+
+    if clicked {
+        match Command::new("powershell")
+            .args(["start", "taskmgr", "-v runAs"])
+            .spawn()
+        {
+            Ok(_c) => println!("Starting Task Manager"),
+            Err(e) => println!("{e}"),
+        };
+    }
 }
 
 fn add_graph(id: &str, ui: &mut Ui, line: Vec<Line>, max_y: f64) {
@@ -817,7 +856,7 @@ fn refresh_disk_io_time(appdata: &mut MyApp) {
             appdata
                 .disk_buffer
                 .entry(d.clone())
-                .or_insert(CircleVec::new(100))
+                .or_insert(CircleVec::new())
                 .add(*value);
         }
     }
@@ -977,12 +1016,12 @@ fn refresh_networks(appdata: &mut MyApp) {
         let e = appdata
             .net_down_buffer
             .entry(name.clone())
-            .or_insert(CircleVec::new(100));
+            .or_insert(CircleVec::new());
         e.add(data.rx);
         let e = appdata
             .net_up_buffer
             .entry(name.clone())
-            .or_insert(CircleVec::new(100));
+            .or_insert(CircleVec::new());
         e.add(data.tx);
     }
 }

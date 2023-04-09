@@ -88,9 +88,9 @@ pub(crate) fn setup_sidebar(appdata: &MyApp) {
 
     let rect = RECT {
         left: location.x,
-        top: 0,
+        top: location.y,
         right: location.x + location.width,
-        bottom: i32::MAX,
+        bottom: location.y + location.height,
     };
 
     let lparam = LPARAM(0);
