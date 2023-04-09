@@ -417,12 +417,16 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
             .Children
             .iter()
             .filter_map(|n| {
-                if n.Text.contains("CPU Core #") {
-                    if let Ok(val) = n.Text.replace("CPU Core #", "").parse::<i32>() {
-                        Some((val, n.to_owned()))
-                    } else {
-                        None
-                    }
+                if let Ok(text) = n.Text.replace("CPU Core #", "").parse::<i32>() {
+                    Some((
+                        text,
+                        n.Value
+                            .replace("°C", "")
+                            .replace(",", ".")
+                            .trim()
+                            .parse::<f32>()
+                            .unwrap_or_default(),
+                    ))
                 } else {
                     None
                 }
@@ -460,7 +464,7 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
             );
             ui.add(
                 EdgyProgressBar::new(max_temp / 100.0)
-                    .text(RichText::new(format!("{max_temp:.1} °C")).small().strong())
+                    .text(RichText::new(format!("{max_temp:.0} °C")).small().strong())
                     .desired_width(SIZE.x / 2.0 - 5.0)
                     .colored_dot(Some(auto_color(2))),
             );
@@ -487,16 +491,13 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
         .show(ui, |ui| {
             for (i, cpu_chunk) in appdata.system_status.cpus().chunks(2).enumerate() {
                 for cpu in cpu_chunk {
-                    let temp = coretemps
-                        .get(i)
-                        .map(|o| o.1.Value.to_string())
-                        .unwrap_or_default();
+                    let temp = coretemps.get(i).map(|o| o.1).unwrap_or_default();
                     let usage = cpu.cpu_usage();
                     ui.add(
                         EdgyProgressBar::new(usage / 100.0)
                             .desired_width(SIZE.x / 2.0 - 5.0)
                             .text(
-                                RichText::new(format!("{usage:.0}% {temp}"))
+                                RichText::new(format!("{usage:.0}% {temp:.0} °C"))
                                     .small()
                                     .strong(),
                             ),
@@ -1137,8 +1138,16 @@ fn refresh_cpu(appdata: &mut MyApp) {
             .iter()
             .filter_map(|n| {
                 if n.Text.contains("CPU Core #") {
-                    if let Ok(val) = n.Text.replace("CPU Core #", "").parse::<i32>() {
-                        Some((val, n.to_owned()))
+                    if let Ok(text) = n.Text.replace("CPU Core #", "").parse::<i32>() {
+                        Some((
+                            text,
+                            n.Value
+                                .replace("°C", "")
+                                .replace(",", ".")
+                                .trim()
+                                .parse::<f32>()
+                                .unwrap_or_default(),
+                        ))
                     } else {
                         None
                     }
@@ -1153,15 +1162,9 @@ fn refresh_cpu(appdata: &mut MyApp) {
 
     let max_temp = coretemps
         .iter()
-        .map(|(_, node)| {
-            node.Value
-                .replace("°C", "")
-                .replace(",", ".")
-                .trim()
-                .parse::<f32>()
-                .unwrap_or_default()
-        })
-        .max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap());
+        .map(|(_, v)| v)
+        .max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap())
+        .copied();
 
     appdata.cpu_maxtemp_buffer.add(max_temp.unwrap_or(0.0));
 }
