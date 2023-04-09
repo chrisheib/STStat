@@ -23,6 +23,7 @@ use sidebar::dispose_sidebar;
 use sysinfo::{ProcessRefreshKind, System, SystemExt};
 use system_info::{get_windows_glass_color, init_system, refresh, refresh_color, GpuData, OHWNode};
 use tokio::{runtime::Runtime, time::sleep};
+use windows::Win32::System::Performance::{PdhCloseQuery, PdhOpenQueryW};
 
 use crate::settings::get_screen_size;
 
@@ -66,10 +67,16 @@ fn main() -> Result<(), eframe::Error> {
 
     let settings = Arc::new(Mutex::new(MySettings::load()));
     let cancel_settings = settings.clone();
+    let mut handle1: isize = -1;
+    let mut handle2: isize = -1;
+    unsafe { PdhOpenQueryW(None, 0, &mut handle1) };
+    unsafe { PdhOpenQueryW(None, 0, &mut handle2) };
 
     ctrlc::set_handler(move || {
         println!("received Ctrl+C, removing sidebar");
         dispose_sidebar(cancel_settings.clone());
+        unsafe { PdhCloseQuery(handle1.clone()) };
+        unsafe { PdhCloseQuery(handle2.clone()) };
         std::process::exit(0);
     })
     .expect("Error setting Ctrl-C handler");
@@ -132,8 +139,10 @@ fn main() -> Result<(), eframe::Error> {
         next_update: Default::default(),
         next_process_update: Default::default(),
         last_ping_time: Default::default(),
-        windows_performance_query_handle: 0,
+        windows_performance_query_handle_disk: handle1,
+        windows_performance_query_handle_core: handle2,
         disk_time_value_handle_map: Default::default(),
+        core_time_value_handle_map: Default::default(),
         cpu_buffer: CircleVec::new(),
         cpu_maxtemp_buffer: CircleVec::new(),
         ram_buffer: CircleVec::new(),
@@ -173,6 +182,9 @@ fn main() -> Result<(), eframe::Error> {
     )?;
 
     dispose_sidebar(settings.clone());
+
+    unsafe { PdhCloseQuery(handle1.clone()) };
+    unsafe { PdhCloseQuery(handle2.clone()) };
 
     Ok(())
 }
@@ -242,8 +254,10 @@ pub struct MyApp {
     pub cpu_maxtemp_buffer: Arc<CircleVec<f32, 100>>,
     pub ram_buffer: Arc<CircleVec<f32, 100>>,
     pub last_ping_time: std::time::Duration,
-    pub windows_performance_query_handle: isize,
+    pub windows_performance_query_handle_disk: isize,
+    pub windows_performance_query_handle_core: isize,
     pub disk_time_value_handle_map: Vec<(String, isize, f64)>,
+    pub core_time_value_handle_map: Vec<(usize, isize, f64)>,
     pub nvid_info: Nvml,
     pub ohw_info: Arc<Mutex<Option<OHWNode>>>,
     pub rt: Runtime,

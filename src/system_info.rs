@@ -24,9 +24,9 @@ use windows::{
         Foundation::BOOL,
         Graphics::Dwm::DwmGetColorizationColor,
         System::Performance::{
-            PdhAddCounterW, PdhBrowseCountersW, PdhCollectQueryData, PdhGetFormattedCounterValue,
-            PdhOpenQueryW, PDH_BROWSE_DLG_CONFIG_W, PDH_CSTATUS_VALID_DATA, PDH_FMT_DOUBLE,
-            PERF_DETAIL_ADVANCED,
+            PdhAddEnglishCounterW, PdhBrowseCountersW, PdhCollectQueryData,
+            PdhGetFormattedCounterValue, PdhOpenQueryW, PDH_BROWSE_DLG_CONFIG_W,
+            PDH_CSTATUS_VALID_DATA, PDH_FMT_DOUBLE, PERF_DETAIL_WIZARD,
         },
     },
 };
@@ -490,9 +490,17 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
         .striped(true)
         .show(ui, |ui| {
             for (i, cpu_chunk) in appdata.system_status.cpus().chunks(2).enumerate() {
-                for cpu in cpu_chunk {
+                for (j, cpu) in cpu_chunk.iter().enumerate() {
                     let temp = coretemps.get(i).map(|o| o.1).unwrap_or_default();
-                    let usage = cpu.cpu_usage();
+                    let index = i * 2 + j;
+                    let usage = appdata
+                        .core_time_value_handle_map
+                        .iter()
+                        .find(|(i, _, _)| i == &index)
+                        .map(|(_, _, v)| v.clone() as f32)
+                        .unwrap_or(cpu.cpu_usage());
+
+                    // let usage = cpu.cpu_usage();
                     ui.add(
                         EdgyProgressBar::new(usage / 100.0)
                             .desired_width(SIZE.x / 2.0 - 5.0)
@@ -885,7 +893,6 @@ fn show_drives(appdata: &MyApp, ui: &mut Ui) {
 fn refresh_disk_io_time(appdata: &mut MyApp) {
     unsafe {
         // Siehe: https://learn.microsoft.com/en-us/windows/win32/perfctrs/pdh-error-codes
-        PdhCollectQueryData(appdata.windows_performance_query_handle);
         for (d, handle, value) in &mut appdata.disk_time_value_handle_map {
             let mut new_value = Default::default();
             PdhGetFormattedCounterValue(*handle, PDH_FMT_DOUBLE, None, &mut new_value);
@@ -899,42 +906,96 @@ fn refresh_disk_io_time(appdata: &mut MyApp) {
     }
 }
 
+fn refresh_core_time(appdata: &mut MyApp) {
+    unsafe {
+        // Siehe: https://learn.microsoft.com/en-us/windows/win32/perfctrs/pdh-error-codes
+        for (d, handle, value) in &mut appdata.core_time_value_handle_map {
+            let mut new_value = Default::default();
+            PdhGetFormattedCounterValue(*handle, PDH_FMT_DOUBLE, None, &mut new_value);
+            *value = new_value.Anonymous.doubleValue;
+        }
+    }
+}
+
 pub fn init_system(appdata: &mut MyApp) {
     // get_core_efficiency_data();
 
     // open_performance_browser();
     appdata.system_status.refresh_disks_list();
+    appdata.system_status.refresh_cpu();
 
-    unsafe { PdhOpenQueryW(None, 0, &mut appdata.windows_performance_query_handle) };
+    // Open Application-Wide query handle and save to appdata
+    // unsafe { PdhOpenQueryW(None, 0, &mut appdata.windows_performance_query_handle) };
+    // dbg!(appdata.windows_performance_query_handle);
+
+    // iterate over disks and add disk io time counters
     for d in appdata.system_status.disks() {
         let drive_letter = d.mount_point().to_str().unwrap().replace('\\', "");
-        let path_str = format!("\\Logischer Datenträger({drive_letter})\\Zeit (%)");
-        // let path_str = format!("\\LogicalDisk({drive_letter})\\% Disk Time");
-        let path = convert_to_pcwstr(&path_str);
-        let mut metric_handle = 0;
+        let path_str = format!(r"\LogicalDisk({drive_letter})\% Disk Time");
         let mut result = 1;
+        let mut metric_handle = 0;
         while result != 0 {
+            let path = convert_to_pcwstr(&path_str);
             unsafe {
-                result = PdhAddCounterW(
-                    appdata.windows_performance_query_handle,
+                println!(
+                    "dbg: drive: PdhAddEnglishCounterW ( {}, {}, 0, {metric_handle})",
+                    appdata.windows_performance_query_handle_disk,
+                    path.to_string().unwrap()
+                );
+                result = PdhAddEnglishCounterW(
+                    appdata.windows_performance_query_handle_disk,
                     path,
                     0,
                     &mut metric_handle,
                 );
 
                 if result != PDH_CSTATUS_VALID_DATA {
-                    println!("Fehler beim registrieren von ({drive_letter}): path: {path_str}, result: {result:X}");
-                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    println!("Fehler beim registrieren von drive ({drive_letter}): path: {path_str}, result: {result:X}");
+                    std::thread::sleep(std::time::Duration::from_millis(200));
                 }
             }
         }
+        // std::thread::sleep(std::time::Duration::from_millis(100));
+
         appdata
             .disk_time_value_handle_map
             .push((drive_letter, metric_handle, 0.0));
     }
 
+    // iterate over cores and add core time counters
+    for (i, _core) in appdata.system_status.cpus().iter().enumerate() {
+        let path_str = dbg!(format!(r"\Processor({i})\% Processor Time"));
+        let mut metric_handle = 0;
+        let mut result = 1;
+        while result != 0 {
+            let path = convert_to_pcwstr(&path_str);
+            unsafe {
+                println!(
+                    "dbg: cpu: PdhAddEnglishCounterW ( {}, {}, 0, {metric_handle})",
+                    appdata.windows_performance_query_handle_core,
+                    path.to_string().unwrap()
+                );
+                result = PdhAddEnglishCounterW(
+                    appdata.windows_performance_query_handle_core,
+                    path,
+                    0,
+                    &mut metric_handle,
+                );
+
+                if result != PDH_CSTATUS_VALID_DATA {
+                    println!("Fehler beim registrieren von Core ({i}): path: {path_str}, result: {result:X}");
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+                }
+            }
+        }
+        appdata
+            .core_time_value_handle_map
+            .push((i, metric_handle, 0.0));
+    }
+
     unsafe {
-        PdhCollectQueryData(appdata.windows_performance_query_handle);
+        PdhCollectQueryData(appdata.windows_performance_query_handle_core);
+        PdhCollectQueryData(appdata.windows_performance_query_handle_disk);
     }
 }
 
@@ -975,10 +1036,10 @@ fn darken(v: u8) -> u8 {
 // }
 
 #[allow(dead_code)]
-fn open_performance_browser() {
+pub fn open_performance_browser() {
     unsafe {
         let hwnd = *STATIC_HWND.read().unwrap();
-        let mut buf: [u16; 1000] = [0; 1000];
+        let mut buf: [u16; 10000] = [0; 10000];
         let returnpathbuffer = PWSTR::from_raw(&mut buf as *mut u16);
         let p = PWSTR::from_raw(w!("hello").as_ptr() as *mut _);
         PdhBrowseCountersW(&PDH_BROWSE_DLG_CONFIG_W {
@@ -986,11 +1047,11 @@ fn open_performance_browser() {
             hWndOwner: hwnd,
             szDataSource: PWSTR::null(),
             szReturnPathBuffer: returnpathbuffer,
-            cchReturnPathLength: 1000,
+            cchReturnPathLength: 10000,
             pCallBack: None,
             dwCallBackArg: 0,
             CallBackStatus: 0,
-            dwDefaultDetailLevel: PERF_DETAIL_ADVANCED,
+            dwDefaultDetailLevel: PERF_DETAIL_WIZARD,
             szDialogBoxCaption: p,
         } as *const PDH_BROWSE_DLG_CONFIG_W);
 
@@ -999,7 +1060,7 @@ fn open_performance_browser() {
 }
 
 fn convert_to_pcwstr(s: &str) -> PCWSTR {
-    let input: &[u8] = s.as_bytes();
+    let input: &[u8] = dbg!(s.as_bytes());
     let output: Vec<u16> = {
         let mut buffer = Vec::<u16>::new();
         let mut input_pos = 0;
@@ -1020,7 +1081,12 @@ fn convert_to_pcwstr(s: &str) -> PCWSTR {
 }
 
 pub fn refresh(appdata: &mut MyApp) {
+    // refresh windows perfcount stats once
+    unsafe { PdhCollectQueryData(appdata.windows_performance_query_handle_disk) };
+    unsafe { PdhCollectQueryData(appdata.windows_performance_query_handle_core) };
     refresh_cpu(appdata);
+    step_timing(appdata, CurrentStep::UpdateCPU);
+    refresh_core_time(appdata);
     step_timing(appdata, CurrentStep::UpdateCPU);
     refresh_gpu(appdata);
     step_timing(appdata, CurrentStep::UpdateGPU);
