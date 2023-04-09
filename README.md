@@ -18,3 +18,34 @@ Needs [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwa
 * Not yet tested on AMD CPUs and GPUs, super limited testing in general. If you run it successfully (or run into errors - please attach the errors.txt, if present) please do give feedback!
 * Only runs on Windows (tested on Win 10 and Win 11). Most of the functions directly query the Windows API.
 * Kinda depends on LibreHardwareMonitor to be useful. I tried implementing most of the stat readouts from scratch, but couldn't easily get performance comparable to that of LHWM. As I need that for the temperature readouts anyway, I relied on it a bit more than necessary. 
+
+## Feature Overview
+* CPU and RAM:
+  * CPU usage
+  * CPU temp (°C)
+  * RAM usage
+  * Core load
+* GPU
+  * GPU usage
+  * VRAM usage and total
+  * Power usage and target
+  * Core clock
+  * GPU temp (°C)
+* Drives
+  * Free Disk space 
+  * Disk usage time
+* Net (Configurable via settings)
+  * Up and Down traffic
+* Ping
+  * Ping google once a second. 
+  * M: Max ping in the last 2 minutes
+  * C: Time of last ping response
+* Processes (Doubleclick to open task manager!)
+  * Group processes by name (x10 -> 10 processes with this name)
+  * show top CPU and top RAM processes
+  * reading process data is expensive -> slower refresh 
+* Settings
+  * Show Networks: Check every network adapter you want to monitor
+  * Screen ID: On which screen the sidebar should be displayed
+  * Display on right side: Check to move the sidebar to the right screen edge
+  * trace perf / save trace: Keep an internal record of performance timings. Click 'save' after tracing for a few seconds to save it into a timings.txt in the folder containing the exe and include the file in a new issue to help me debug performance issues!
