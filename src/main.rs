@@ -60,6 +60,9 @@ pub const POS: egui::Pos2 = egui::Pos2 {
 pub const EDGE: u32 = windows::Win32::UI::Shell::ABE_RIGHT;
 
 fn main() -> Result<(), eframe::Error> {
+    // winapi_test();
+    // panic!();
+
     panic::set_hook(Box::new(|p| {
         println!("Custom panic hook: {p}");
         std::fs::write("error.txt", format!("{p}")).unwrap_or_default();
@@ -139,8 +142,7 @@ fn main() -> Result<(), eframe::Error> {
         next_update: Default::default(),
         next_process_update: Default::default(),
         last_ping_time: Default::default(),
-        windows_performance_query_handle_disk: handle1,
-        windows_performance_query_handle_core: handle2,
+        windows_performance_query_handle: handle1,
         disk_time_value_handle_map: Default::default(),
         core_time_value_handle_map: Default::default(),
         cpu_buffer: CircleVec::new(),
@@ -254,8 +256,7 @@ pub struct MyApp {
     pub cpu_maxtemp_buffer: Arc<CircleVec<f32, 100>>,
     pub ram_buffer: Arc<CircleVec<f32, 100>>,
     pub last_ping_time: std::time::Duration,
-    pub windows_performance_query_handle_disk: isize,
-    pub windows_performance_query_handle_core: isize,
+    pub windows_performance_query_handle: isize,
     pub disk_time_value_handle_map: Vec<(String, isize, f64)>,
     pub core_time_value_handle_map: Vec<(usize, isize, f64)>,
     pub nvid_info: Nvml,
