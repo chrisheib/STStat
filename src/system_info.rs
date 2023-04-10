@@ -338,7 +338,6 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
 
 fn show_processes(appdata: &mut MyApp, ui: &mut Ui) {
     ui.vertical_centered(|ui| ui.label("Processes"));
-    let num_cpus = appdata.system_status.cpus().len();
     // Processes
     let mut processes = appdata
         .system_status
@@ -360,26 +359,12 @@ fn show_processes(appdata: &mut MyApp, ui: &mut Ui) {
 
     // By CPU
     processes.sort_by(|a, b| b.cpu.total_cmp(&a.cpu));
-    add_process_table(
-        ui,
-        7,
-        &processes,
-        num_cpus,
-        "Proc CPU",
-        ProcessTableDisplayMode::Cpu,
-    );
+    add_process_table(ui, 7, &processes, "Proc CPU", ProcessTableDisplayMode::Cpu);
     step_timing(appdata, crate::CurrentStep::ProcCPU);
 
     // By Memory
     processes.sort_by(|a, b| b.memory.cmp(&a.memory));
-    add_process_table(
-        ui,
-        7,
-        &processes,
-        num_cpus,
-        "Proc Ram",
-        ProcessTableDisplayMode::Ram,
-    );
+    add_process_table(ui, 7, &processes, "Proc Ram", ProcessTableDisplayMode::Ram);
     step_timing(appdata, crate::CurrentStep::ProcRAM);
 }
 
@@ -652,7 +637,6 @@ fn add_process_table(
     ui: &mut Ui,
     len: usize,
     p: &[Proc],
-    num_cpus: usize,
     name: &str,
     display_mode: ProcessTableDisplayMode,
 ) {
@@ -765,12 +749,9 @@ fn add_process_table(
                                 || ui
                                     .add(
                                         Label::new(
-                                            RichText::new(format!(
-                                                "{:.1}%",
-                                                p.cpu / num_cpus as f32
-                                            ))
-                                            .small()
-                                            .strong(),
+                                            RichText::new(format!("{:.1}%", p.cpu as f32))
+                                                .small()
+                                                .strong(),
                                         )
                                         .wrap(false),
                                     )
