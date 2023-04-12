@@ -43,14 +43,12 @@ impl Add for Process {
 /// (cpu_metric_handle, ram_metric_handle)
 pub fn init_process_metrics(metric_query_handle: isize) -> ProcessMetricHandles {
     let cpu_metric_handle = add_english_counter(
-        r"\Process V2(*)\% Processor Time".to_string(),
+        r"\Process(*)\% Processor Time".to_string(),
         metric_query_handle,
     );
 
-    let ram_metric_handle = add_english_counter(
-        r"\Process V2(*)\Working Set".to_string(),
-        metric_query_handle,
-    );
+    let ram_metric_handle =
+        add_english_counter(r"\Process(*)\Working Set".to_string(), metric_query_handle);
     ProcessMetricHandles {
         cpu_handle: cpu_metric_handle,
         ram_handle: ram_metric_handle,
@@ -117,7 +115,7 @@ pub fn get_pdh_process_data(process_metric_handles: &ProcessMetricHandles) -> Ve
                     p.szName
                         .to_string()
                         .unwrap_or_default()
-                        .split(':')
+                        .split('#')
                         .next()
                         .unwrap_or_default()
                         .to_string(),
@@ -143,7 +141,7 @@ pub fn get_pdh_process_data(process_metric_handles: &ProcessMetricHandles) -> Ve
                     p.szName
                         .to_string()
                         .unwrap_or_default()
-                        .split(':')
+                        .split('#')
                         .next()
                         .unwrap_or_default()
                         .to_string(),
