@@ -13,7 +13,7 @@ use crate::settings::get_screen_size;
 use chrono::{Duration, Local, NaiveDateTime};
 use circlevec::CircleVec;
 use eframe::{
-    egui::{self, RichText, ScrollArea, Visuals},
+    egui::{self, Label, Layout, RichText, ScrollArea, Visuals},
     epaint::Color32,
 };
 use ekko::{Ekko, EkkoResponse};
@@ -342,12 +342,20 @@ impl eframe::App for MyApp {
             println!("Setup sidebar done");
         }
 
-        custom_window_frame(ctx, frame, "Sidebar", |ui| {
+        custom_window_frame(ctx, frame, "STStat", |ui| {
             if update {
                 refresh_color(ui);
             }
-
-            ui.label(format!("{}", self.framecount));
+            ui.columns(2, |ui| {
+                ui[0].add(Label::new(
+                    RichText::new(format!("{}", self.framecount)).weak(),
+                ));
+                ui[1].with_layout(Layout::right_to_left(eframe::emath::Align::TOP), |ui| {
+                    ui.add(Label::new(
+                        RichText::new(format!("v{}", cargo_crate_version!())).weak(),
+                    ));
+                });
+            });
 
             let now = chrono::Local::now();
             ui.vertical_centered(|ui| {
