@@ -9,6 +9,7 @@ use std::{
     time::Instant,
 };
 
+use crate::settings::get_screen_size;
 use chrono::{Duration, Local, NaiveDateTime};
 use circlevec::CircleVec;
 use eframe::{
@@ -18,50 +19,36 @@ use eframe::{
 use ekko::{Ekko, EkkoResponse};
 use nvml_wrapper::Nvml;
 use parking_lot::Mutex;
+use process::{Process, ProcessMetricHandles};
 use settings::{show_settings, MySettings};
 use sidebar::dispose_sidebar;
-use sysinfo::{ProcessRefreshKind, System, SystemExt};
+use sysinfo::{System, SystemExt};
 use system_info::{get_windows_glass_color, init_system, refresh, refresh_color, GpuData, OHWNode};
 use tokio::{runtime::Runtime, time::sleep};
-use windows::Win32::System::Performance::{PdhCloseQuery, PdhOpenQueryW};
-
-use crate::settings::get_screen_size;
+use windows::Win32::System::Performance::{PdhCloseQuery, PdhOpenQueryA};
 
 mod autostart;
 mod bytes_format;
 mod circlevec;
 mod color;
 mod components;
+mod process;
 mod settings;
 mod sidebar;
 mod system_info;
 
 // On read problems, run: lodctr /r
-
 pub const UPDATE_INTERVAL_MILLIS: i64 = 1000;
-
-// Right Screen, Left side
-// pub const SIZE: egui::Vec2 = egui::Vec2 {
-//     x: 150.0,
-//     y: 1032.0,
-// };
-// pub const POS: egui::Pos2 = egui::Pos2 { x: 2560.0, y: 0.0 };
-// pub const EDGE: u32 = windows::Win32::UI::Shell::ABE_LEFT;
 
 // Right Screen, Right side
 pub const SIZE: egui::Vec2 = egui::Vec2 {
     x: 130.0,
     y: 1032.0,
 };
-pub const POS: egui::Pos2 = egui::Pos2 {
-    x: 4480.0 - SIZE.x,
-    y: 148.0,
-};
-pub const EDGE: u32 = windows::Win32::UI::Shell::ABE_RIGHT;
 
 fn main() -> Result<(), eframe::Error> {
-    // winapi_test();
-    // panic!();
+    let mut pdh_query_handle: isize = -1;
+    unsafe { PdhOpenQueryA(None, 0, &mut pdh_query_handle) };
 
     panic::set_hook(Box::new(|p| {
         println!("Custom panic hook: {p}");
@@ -70,16 +57,11 @@ fn main() -> Result<(), eframe::Error> {
 
     let settings = Arc::new(Mutex::new(MySettings::load()));
     let cancel_settings = settings.clone();
-    let mut handle1: isize = -1;
-    let mut handle2: isize = -1;
-    unsafe { PdhOpenQueryW(None, 0, &mut handle1) };
-    unsafe { PdhOpenQueryW(None, 0, &mut handle2) };
 
     ctrlc::set_handler(move || {
         println!("received Ctrl+C, removing sidebar");
         dispose_sidebar(cancel_settings.clone());
-        unsafe { PdhCloseQuery(handle1.clone()) };
-        unsafe { PdhCloseQuery(handle2.clone()) };
+        unsafe { PdhCloseQuery(pdh_query_handle.clone()) };
         std::process::exit(0);
     })
     .expect("Error setting Ctrl-C handler");
@@ -129,7 +111,7 @@ fn main() -> Result<(), eframe::Error> {
         initial_window_size: Some(initial_window_size.into()),
         initial_window_pos: Some(initial_window_pos.into()),
         drag_and_drop_support: false,
-        vsync: false,
+        vsync: true,
         ..Default::default()
     };
 
@@ -137,12 +119,9 @@ fn main() -> Result<(), eframe::Error> {
         system_status: System::new_all(),
         ping_buffer,
         firstupdate: false,
-        create_frame: 0,
         framecount: 0,
         next_update: Default::default(),
-        next_process_update: Default::default(),
-        last_ping_time: Default::default(),
-        windows_performance_query_handle: handle1,
+        windows_performance_query_handle: pdh_query_handle,
         disk_time_value_handle_map: Default::default(),
         core_time_value_handle_map: Default::default(),
         cpu_buffer: CircleVec::new(),
@@ -154,7 +133,6 @@ fn main() -> Result<(), eframe::Error> {
         gpu: None,
         timing: CircleVec::new(),
         current_frame_start: Instant::now(),
-        step: 0,
         cur_ram: 0.0,
         total_ram: 0.0,
         net_up_buffer: Default::default(),
@@ -165,6 +143,8 @@ fn main() -> Result<(), eframe::Error> {
         show_settings: false,
         settings: settings.clone(),
         disk_buffer: Default::default(),
+        processes: vec![],
+        process_metric_handles: Default::default(),
     };
 
     get_screen_size(&appstate);
@@ -185,8 +165,7 @@ fn main() -> Result<(), eframe::Error> {
 
     dispose_sidebar(settings.clone());
 
-    unsafe { PdhCloseQuery(handle1.clone()) };
-    unsafe { PdhCloseQuery(handle2.clone()) };
+    unsafe { PdhCloseQuery(pdh_query_handle.clone()) };
 
     Ok(())
 }
@@ -246,16 +225,13 @@ pub struct TimingStep {
 
 pub struct MyApp {
     pub firstupdate: bool,
-    pub create_frame: u64,
     pub framecount: u64,
     pub system_status: System,
     pub next_update: NaiveDateTime,
-    pub next_process_update: NaiveDateTime,
     pub ping_buffer: Arc<CircleVec<u64, 100>>,
     pub cpu_buffer: Arc<CircleVec<f32, 100>>,
     pub cpu_maxtemp_buffer: Arc<CircleVec<f32, 100>>,
     pub ram_buffer: Arc<CircleVec<f32, 100>>,
-    pub last_ping_time: std::time::Duration,
     pub windows_performance_query_handle: isize,
     pub disk_time_value_handle_map: Vec<(String, isize, f64)>,
     pub core_time_value_handle_map: Vec<(usize, isize, f64)>,
@@ -265,7 +241,6 @@ pub struct MyApp {
     pub gpu: Option<GpuData>,
     pub timing: Arc<CircleVec<TimingStep, 2000>>,
     pub current_frame_start: Instant,
-    pub step: usize,
     pub cur_ram: f32,
     pub total_ram: f32,
     pub net_up_buffer: HashMap<String, Arc<CircleVec<f64, 100>>>,
@@ -276,6 +251,8 @@ pub struct MyApp {
     pub show_settings: bool,
     pub settings: Arc<Mutex<MySettings>>,
     pub disk_buffer: HashMap<String, Arc<CircleVec<f64, 100>>>,
+    pub processes: Vec<Process>,
+    pub process_metric_handles: ProcessMetricHandles,
 }
 
 impl eframe::App for MyApp {
@@ -294,14 +271,6 @@ impl eframe::App for MyApp {
             self.next_update =
                 now + Duration::milliseconds(1000i64 - now.timestamp_subsec_millis() as i64);
             update = true;
-        }
-
-        if now > self.next_process_update {
-            self.system_status
-                .refresh_processes_specifics(ProcessRefreshKind::everything().without_disk_usage());
-            step_timing(self, CurrentStep::UpdateSystemProcess);
-            self.next_process_update =
-                now + Duration::milliseconds(4000i64 - now.timestamp_subsec_millis() as i64);
         }
 
         self.framecount += 1;
@@ -330,9 +299,16 @@ impl eframe::App for MyApp {
         if !self.firstupdate && self.framecount > 1 {
             println!("Setup sidebar");
             self.firstupdate = true;
-            self.create_frame = self.framecount;
             sidebar::setup_sidebar(&self);
-            frame.set_window_pos(POS);
+            let s = self.settings.lock();
+            frame.set_window_pos(
+                (
+                    s.current_settings.location.x as f32,
+                    s.current_settings.location.y as f32,
+                )
+                    .into(),
+            );
+            drop(s);
             println!("Setup sidebar done");
         }
 
@@ -366,12 +342,6 @@ impl eframe::App for MyApp {
                     .to_std()
                     .unwrap(),
             );
-
-            // self.last_ping_time = self.ping_channel.try_recv().unwrap_or(self.last_ping_time);
-            // ui.label(format!(
-            //     "Last ping: {:?}ms",
-            //     self.last_ping_time.as_millis()
-            // ));
         });
     }
 }

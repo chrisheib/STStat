@@ -1,7 +1,11 @@
 use crate::{
-    bytes_format::format_bytes, circlevec::CircleVec, color::auto_color,
-    components::edgy_progress::EdgyProgressBar, sidebar::STATIC_HWND, step_timing, CurrentStep,
-    MyApp, SIZE,
+    bytes_format::format_bytes,
+    circlevec::CircleVec,
+    color::auto_color,
+    components::edgy_progress::EdgyProgressBar,
+    process::{add_english_counter, get_pdh_process_data, init_process_metrics, Process},
+    sidebar::STATIC_HWND,
+    step_timing, CurrentStep, MyApp, SIZE,
 };
 use eframe::{
     egui::{
@@ -14,47 +18,20 @@ use eframe::{
 use egui_extras::{Column, TableBuilder};
 use itertools::Itertools;
 use serde::Deserialize;
-use std::ops::Add;
-use sysinfo::{CpuExt, DiskExt, NetworkExt, NetworksExt, ProcessExt, SystemExt};
+use sysinfo::{CpuExt, CpuRefreshKind, DiskExt, NetworkExt, NetworksExt, SystemExt};
 use tokio::process::Command;
 use windows::{
-    core::{PCSTR, PWSTR},
+    core::PWSTR,
     w,
     Win32::{
         Foundation::BOOL,
         Graphics::Dwm::DwmGetColorizationColor,
         System::Performance::{
-            PdhAddEnglishCounterA, PdhBrowseCountersW, PdhCollectQueryData,
-            PdhGetFormattedCounterValue, PDH_BROWSE_DLG_CONFIG_W, PDH_CSTATUS_VALID_DATA,
-            PDH_FMT_DOUBLE, PERF_DETAIL_WIZARD,
+            PdhBrowseCountersW, PdhCollectQueryData, PdhGetFormattedCounterValue,
+            PDH_BROWSE_DLG_CONFIG_W, PDH_FMT_DOUBLE, PERF_DETAIL_WIZARD,
         },
     },
 };
-
-#[derive(Default, Debug)]
-struct Proc {
-    name: String,
-    cpu: f32,
-    memory: u64,
-    disk_read: u64,
-    disk_write: u64,
-    count: u64,
-}
-
-impl Add for Proc {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        Self {
-            name: self.name,
-            cpu: self.cpu + rhs.cpu,
-            memory: self.memory + rhs.memory,
-            disk_read: self.disk_read + rhs.disk_read,
-            disk_write: self.disk_write + rhs.disk_write,
-            count: self.count + rhs.count,
-        }
-    }
-}
 
 pub fn set_system_info_components(appdata: &mut MyApp, ui: &mut Ui) {
     step_timing(appdata, crate::CurrentStep::Begin);
@@ -71,8 +48,6 @@ fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
     ui.vertical_centered(|ui| ui.label("Net"));
 
     for (interface_name, data) in filter_networks(appdata) {
-        // clock_video: u32,
-
         ui.push_id(format!("network graph {interface_name}"), |ui| {
             let table = TableBuilder::new(ui)
                 .striped(true)
@@ -338,33 +313,32 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
 
 fn show_processes(appdata: &mut MyApp, ui: &mut Ui) {
     ui.vertical_centered(|ui| ui.label("Processes"));
-    // Processes
-    let mut processes = appdata
-        .system_status
-        .processes()
-        .values()
-        .map(|p| Proc {
-            name: p.name().to_string().replace(".exe", ""),
-            cpu: p.cpu_usage(),
-            memory: p.memory(),
-            disk_read: p.disk_usage().read_bytes,
-            disk_write: p.disk_usage().written_bytes,
-            count: 1,
-        })
-        .sorted_by_key(|p| p.name.clone())
-        .group_by(|p| p.name.clone())
-        .into_iter()
-        .map(|(_name, group)| group.reduce(|acc, v| acc + v).unwrap())
-        .collect_vec();
-
     // By CPU
-    processes.sort_by(|a, b| b.cpu.total_cmp(&a.cpu));
-    add_process_table(ui, 7, &processes, "Proc CPU", ProcessTableDisplayMode::Cpu);
+    let mut p = appdata.processes.clone();
+
+    p.sort_unstable_by(|a, b| b.cpu.total_cmp(&a.cpu));
+    let cpu_count = appdata.system_status.cpus().len();
+    add_process_table(
+        ui,
+        7,
+        &p,
+        "Proc CPU",
+        ProcessTableDisplayMode::Cpu,
+        cpu_count,
+    );
     step_timing(appdata, crate::CurrentStep::ProcCPU);
 
     // By Memory
-    processes.sort_by(|a, b| b.memory.cmp(&a.memory));
-    add_process_table(ui, 7, &processes, "Proc Ram", ProcessTableDisplayMode::Ram);
+    let mut p = appdata.processes.clone();
+    p.sort_unstable_by(|a, b| b.memory.cmp(&a.memory));
+    add_process_table(
+        ui,
+        7,
+        &p,
+        "Proc Ram",
+        ProcessTableDisplayMode::Ram,
+        cpu_count,
+    );
     step_timing(appdata, crate::CurrentStep::ProcRAM);
 }
 
@@ -636,9 +610,10 @@ enum ProcessTableDisplayMode {
 fn add_process_table(
     ui: &mut Ui,
     len: usize,
-    p: &[Proc],
+    p: &[Process],
     name: &str,
     display_mode: ProcessTableDisplayMode,
+    core_count: usize,
 ) {
     let mut clicked = false;
     ui.push_id(name, |ui| {
@@ -697,68 +672,73 @@ fn add_process_table(
         });
         table.body(|body| {
             body.rows(10.0, len, |row_index, mut row| {
-                let p = &p[row_index];
-                row.col(|ui| {
-                    clicked = clicked
-                        || ui
-                            .add(
-                                Label::new(
-                                    RichText::new(format!(
-                                        "{}{}",
-                                        p.name,
-                                        if p.count > 1 {
-                                            format!(" ×{}", p.count)
-                                        } else {
-                                            "".to_string()
-                                        }
-                                    ))
-                                    .small()
-                                    .strong(),
+                if row_index < p.len() {
+                    let p = &p[row_index];
+                    row.col(|ui| {
+                        clicked = clicked
+                            || ui
+                                .add(
+                                    Label::new(
+                                        RichText::new(format!(
+                                            "{}{}",
+                                            p.name,
+                                            if p.count > 1 {
+                                                format!(" ×{}", p.count)
+                                            } else {
+                                                "".to_string()
+                                            }
+                                        ))
+                                        .small()
+                                        .strong(),
+                                    )
+                                    .wrap(false),
                                 )
-                                .wrap(false),
-                            )
-                            .interact(Sense::click())
-                            .double_clicked();
-                });
-                if display_mode == ProcessTableDisplayMode::All
-                    || display_mode == ProcessTableDisplayMode::Ram
-                {
-                    row.col(|ui| {
-                        ui.with_layout(Layout::top_down_justified(Max), |ui| {
-                            clicked = clicked
-                                || ui
-                                    .add(
-                                        Label::new(
-                                            RichText::new(format_bytes(p.memory as f64))
+                                .interact(Sense::click())
+                                .double_clicked();
+                    });
+                    if display_mode == ProcessTableDisplayMode::All
+                        || display_mode == ProcessTableDisplayMode::Ram
+                    {
+                        row.col(|ui| {
+                            ui.with_layout(Layout::top_down_justified(Max), |ui| {
+                                clicked = clicked
+                                    || ui
+                                        .add(
+                                            Label::new(
+                                                RichText::new(format_bytes(p.memory as f64))
+                                                    .small()
+                                                    .strong(),
+                                            )
+                                            .wrap(false),
+                                        )
+                                        .interact(Sense::click())
+                                        .double_clicked()
+                            });
+                        });
+                    }
+                    if display_mode == ProcessTableDisplayMode::All
+                        || display_mode == ProcessTableDisplayMode::Cpu
+                    {
+                        row.col(|ui| {
+                            ui.with_layout(Layout::top_down_justified(Max), |ui| {
+                                clicked = clicked
+                                    || ui
+                                        .add(
+                                            Label::new(
+                                                RichText::new(format!(
+                                                    "{:.1}%",
+                                                    p.cpu as f32 / core_count as f32
+                                                ))
                                                 .small()
                                                 .strong(),
+                                            )
+                                            .wrap(false),
                                         )
-                                        .wrap(false),
-                                    )
-                                    .interact(Sense::click())
-                                    .double_clicked()
+                                        .interact(Sense::click())
+                                        .double_clicked();
+                            });
                         });
-                    });
-                }
-                if display_mode == ProcessTableDisplayMode::All
-                    || display_mode == ProcessTableDisplayMode::Cpu
-                {
-                    row.col(|ui| {
-                        ui.with_layout(Layout::top_down_justified(Max), |ui| {
-                            clicked = clicked
-                                || ui
-                                    .add(
-                                        Label::new(
-                                            RichText::new(format!("{:.1}%", p.cpu as f32))
-                                                .small()
-                                                .strong(),
-                                        )
-                                        .wrap(false),
-                                    )
-                                    .interact(Sense::click())
-                                    .double_clicked();
-                        });
-                    });
+                    }
                 }
             });
         });
@@ -886,15 +866,11 @@ fn refresh_disk_io_time(appdata: &mut MyApp) {
 }
 
 pub fn init_system(appdata: &mut MyApp) {
-    // get_core_efficiency_data();
-
     // open_performance_browser();
+
+    appdata.process_metric_handles = init_process_metrics(appdata.windows_performance_query_handle);
     appdata.system_status.refresh_disks_list();
     appdata.system_status.refresh_cpu();
-
-    // Open Application-Wide query handle and save to appdata
-    // unsafe { PdhOpenQueryW(None, 0, &mut appdata.windows_performance_query_handle) };
-    // dbg!(appdata.windows_performance_query_handle);
 
     // iterate over disks and add disk io time counters
     for d in appdata
@@ -904,40 +880,17 @@ pub fn init_system(appdata: &mut MyApp) {
         .sorted_by_key(|d| d.mount_point())
     {
         let drive_letter = d.mount_point().to_str().unwrap().replace('\\', "");
-        let path_str = format!("\\LogicalDisk({drive_letter})\\% Disk Time\0");
-        let path = PCSTR::from_raw(path_str.as_bytes().as_ptr());
-        let mut result = 1;
-        let mut metric_handle = 0;
-        while result != 0 {
-            // let path = convert_to_pcwstr(&path_str);
-            unsafe {
-                // println!(
-                //     "dbg: drive: PdhAddEnglishCounterW ( {}, {}, 0, {metric_handle})",
-                //     appdata.windows_performance_query_handle,
-                //     path.to_string().unwrap()
-                // );
-                result = PdhAddEnglishCounterA(
-                    appdata.windows_performance_query_handle,
-                    path,
-                    0,
-                    &mut metric_handle,
-                );
-
-                if result != PDH_CSTATUS_VALID_DATA {
-                    println!("Fehler beim Registrieren von Drive {drive_letter} path: '{path_str}', result: {result:X}");
-                    std::thread::sleep(std::time::Duration::from_millis(50));
-                }
-            }
-        }
+        let metric_handle = add_english_counter(
+            format!(r"\LogicalDisk({drive_letter})\% Disk Time"),
+            appdata.windows_performance_query_handle,
+        );
 
         appdata
             .disk_time_value_handle_map
             .push((drive_letter, metric_handle, 0.0));
     }
 
-    unsafe {
-        PdhCollectQueryData(appdata.windows_performance_query_handle);
-    }
+    unsafe { PdhCollectQueryData(appdata.windows_performance_query_handle) };
 }
 
 pub fn get_windows_glass_color() -> Color32 {
@@ -958,23 +911,6 @@ pub fn get_windows_glass_color() -> Color32 {
 fn darken(v: u8) -> u8 {
     (v as f32 * 0.4) as u8
 }
-
-// fn get_core_efficiency_data() {
-//     unsafe {
-//         let mut req_len = 0;
-//         GetSystemCpuSetInformation(None, 0, &mut req_len, None, 0);
-
-//         let mut sys_inf = SYSTEM_CPU_SET_INFORMATION::default();
-//         dbg!(GetSystemCpuSetInformation(
-//             Some(&mut sys_inf),
-//             dbg!(req_len),
-//             &mut req_len,
-//             None,
-//             0
-//         ));
-//         dbg!(sys_inf.Anonymous.CpuSet.EfficiencyClass);
-//     }
-// }
 
 #[allow(dead_code)]
 pub fn open_performance_browser() {
@@ -1028,6 +964,13 @@ pub fn refresh(appdata: &mut MyApp) {
 
     refresh_disk_io_time(appdata);
     step_timing(appdata, CurrentStep::UpdateIoTime);
+
+    refresh_processes(appdata);
+    step_timing(appdata, CurrentStep::UpdateSystemProcess);
+}
+
+fn refresh_processes(appdata: &mut MyApp) {
+    appdata.processes = get_pdh_process_data(&appdata.process_metric_handles);
 }
 
 pub fn refresh_color(ui: &mut Ui) {
@@ -1112,7 +1055,9 @@ fn refresh_system_memory(appdata: &mut MyApp) {
 }
 
 fn refresh_cpu(appdata: &mut MyApp) {
-    appdata.system_status.refresh_cpu();
+    appdata
+        .system_status
+        .refresh_cpu_specifics(CpuRefreshKind::new().with_cpu_usage());
     appdata
         .cpu_buffer
         .add(appdata.system_status.global_cpu_info().cpu_usage());
@@ -1175,17 +1120,3 @@ pub struct OHWNode {
     Value: String,
     id: i64,
 }
-
-// pub fn winapi_test() {
-//     let mut handle1: PDH_HQUERY = 0isize as *mut c_void;
-//     unsafe { winapi::um::pdh::PdhOpenQueryW(0u16 as *const u16, 0, &mut handle1) };
-
-//     // let path: LPCWSTR = convert_to_pcwstr(r"").0;
-//     let path: LPCWSTR = convert_to_pcwstr(r"\Processor(0)\% Processor Time").0;
-
-//     unsafe {
-//         let mut handle2: PDH_HCOUNTER = 0isize as *mut c_void;
-//         let status = winapi::um::pdh::PdhAddEnglishCounterW(handle1, path, 0, &mut handle2);
-//         println!("{status:X}");
-//     }
-// }
