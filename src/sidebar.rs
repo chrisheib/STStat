@@ -70,7 +70,7 @@ pub(crate) fn setup_sidebar(appdata: &MyApp) {
 
     let title = PCSTR::from_raw(INTERNAL_WINDOW_TITLE.as_bytes().as_ptr());
     let hwnd = unsafe { FindWindowA(None, title) };
-    dbg!(hwnd);
+    // dbg!(hwnd);
 
     // let active_window = active_win_pos_rs::get_active_window().expect("Active window should exist");
     // println!("active window: {active_window:#?}");

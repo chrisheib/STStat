@@ -4,7 +4,7 @@
 use std::{
     collections::HashMap,
     panic::{self},
-    sync::Arc,
+    sync::{atomic::AtomicBool, Arc},
     thread,
     time::Instant,
 };
@@ -20,6 +20,7 @@ use ekko::{Ekko, EkkoResponse};
 use nvml_wrapper::Nvml;
 use parking_lot::Mutex;
 use process::{Process, ProcessMetricHandles};
+use self_update::{backends::github::Update, cargo_crate_version};
 use settings::{show_settings, MySettings};
 use sidebar::dispose_sidebar;
 use sysinfo::{System, SystemExt};
@@ -58,6 +59,7 @@ fn main() -> Result<(), eframe::Error> {
 
     let settings = Arc::new(Mutex::new(MySettings::load()));
     let cancel_settings = settings.clone();
+    let update_available = Arc::new(AtomicBool::new(false));
 
     ctrlc::set_handler(move || {
         println!("received Ctrl+C, removing sidebar");
@@ -73,24 +75,10 @@ fn main() -> Result<(), eframe::Error> {
     let ohw_info: Arc<Mutex<Option<OHWNode>>> = Default::default();
     let thread_ohw = ohw_info.clone();
 
-    thread::spawn(move || {
-        let ekko = Ekko::with_target([8, 8, 8, 8]).unwrap();
-        loop {
-            if let EkkoResponse::Destination(res) = ekko.send(32).unwrap() {
-                thread_pb.add(res.elapsed.as_millis() as u64);
-            }
-            thread::sleep(
-                Duration::milliseconds(
-                    (1000 - Local::now().naive_local().timestamp_subsec_millis() as i64)
-                        .min(1000)
-                        .max(520),
-                )
-                .to_std()
-                .unwrap(),
-            );
-        }
-    });
+    rt.spawn(ping_thread(thread_pb));
     rt.spawn(ohw_thread(thread_ohw));
+    let thread_update_available = update_available.clone();
+    thread::spawn(move || check_update_thread(thread_update_available));
 
     let s = settings.lock();
     let initial_window_size = (
@@ -146,6 +134,7 @@ fn main() -> Result<(), eframe::Error> {
         disk_buffer: Default::default(),
         processes: vec![],
         process_metric_handles: Default::default(),
+        update_available,
     };
 
     get_screen_size(&appstate);
@@ -171,6 +160,25 @@ fn main() -> Result<(), eframe::Error> {
     Ok(())
 }
 
+async fn ping_thread(thread_pb: Arc<CircleVec<u64, 100>>) -> ! {
+    let ekko = Ekko::with_target([8, 8, 8, 8]).unwrap();
+    loop {
+        if let EkkoResponse::Destination(res) = ekko.send(32).unwrap() {
+            thread_pb.add(res.elapsed.as_millis() as u64);
+        }
+        sleep(
+            Duration::milliseconds(
+                (1000 - Local::now().naive_local().timestamp_subsec_millis() as i64)
+                    .min(1000)
+                    .max(520),
+            )
+            .to_std()
+            .unwrap(),
+        )
+        .await;
+    }
+}
+
 async fn ohw_thread(thread_ohw: Arc<Mutex<Option<OHWNode>>>) -> ! {
     loop {
         if let Ok(data) = reqwest::get("http://localhost:8085/data.json").await {
@@ -192,6 +200,26 @@ async fn ohw_thread(thread_ohw: Arc<Mutex<Option<OHWNode>>>) -> ! {
             .unwrap(),
         )
         .await;
+    }
+}
+
+fn check_update_thread(update_available: Arc<AtomicBool>) -> ! {
+    loop {
+        if let Ok(status) = Update::configure()
+            .repo_owner("chrisheib")
+            .repo_name("ststat")
+            .bin_name("ststat.exe")
+            .current_version(cargo_crate_version!())
+            .build()
+        {
+            let cur_ver = status.current_version();
+            let new_ver = status.get_latest_release().unwrap_or_default();
+            update_available.store(
+                dbg!(cur_ver) != dbg!(new_ver.version),
+                std::sync::atomic::Ordering::Relaxed,
+            );
+        }
+        thread::sleep(std::time::Duration::from_secs(60 * 60));
     }
 }
 
@@ -254,6 +282,7 @@ pub struct MyApp {
     pub disk_buffer: HashMap<String, Arc<CircleVec<f64, 100>>>,
     pub processes: Vec<Process>,
     pub process_metric_handles: ProcessMetricHandles,
+    pub update_available: Arc<AtomicBool>,
 }
 
 impl eframe::App for MyApp {
@@ -325,6 +354,19 @@ impl eframe::App for MyApp {
                 ui.heading(RichText::new(now.format("%H:%M:%S").to_string()).strong())
             });
             ui.separator();
+
+            if self
+                .update_available
+                .load(std::sync::atomic::Ordering::Relaxed)
+            {
+                ui.hyperlink_to(
+                    RichText::new("Update available!")
+                        .color(Color32::RED)
+                        .strong(),
+                    "https://github.com/chrisheib/ststat/releases",
+                );
+                ui.separator();
+            }
 
             ScrollArea::vertical().show(ui, |ui| {
                 system_info::set_system_info_components(self, ui);
