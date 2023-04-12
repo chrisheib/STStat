@@ -14,7 +14,6 @@ Needs [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwa
 * 🪟 Use the Windows API to look and feel like a true native windows sidebar, including limiting the space of maximised windows and not showing up in the task switcher.
 
 ## Limitations
-* Needs to be run as Admin to view the usage of system processes. Will still work fine without being run as admin, but can't show the load of processes like Windows Defender and most services.
 * Not yet tested on AMD CPUs and GPUs, super limited testing in general. If you run it successfully (or run into errors - please attach the errors.txt, if present) please do give feedback!
 * Only runs on Windows (tested on Win 10 and Win 11). Most of the functions directly query the Windows API.
 * Kinda depends on LibreHardwareMonitor to be useful. I tried implementing most of the stat readouts from scratch, but couldn't easily get performance comparable to that of LHWM. As I need that for the temperature readouts anyway, I relied on it a bit more than necessary. 

@@ -8,7 +8,7 @@ use std::{
 use lazy_static::lazy_static;
 use parking_lot::Mutex;
 use windows::{
-    w,
+    core::PCSTR,
     Win32::{
         Foundation::{GetLastError, SetLastError, HWND, LPARAM, RECT, WIN32_ERROR},
         Graphics::Dwm::{
@@ -21,14 +21,14 @@ use windows::{
                 ABM_SETPOS, APPBARDATA,
             },
             WindowsAndMessaging::{
-                FindWindowW, GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_APPWINDOW,
+                FindWindowA, GetWindowLongPtrA, SetWindowLongPtrA, GWL_EXSTYLE, WS_EX_APPWINDOW,
                 WS_EX_TOOLWINDOW,
             },
         },
     },
 };
 
-use crate::{settings::MySettings, MyApp};
+use crate::{settings::MySettings, MyApp, INTERNAL_WINDOW_TITLE};
 
 lazy_static! {
     pub static ref STATIC_HWND: RwLock<HWND> = HWND(0).into();
@@ -68,8 +68,9 @@ pub(crate) fn setup_sidebar(appdata: &MyApp) {
     //     EnumWindows(Some(cb), LPARAM(&mut cbi as *mut CallbackInfo as isize));
     // }
 
-    let hwnd = unsafe { FindWindowW(None, w!("RS_Sidebar")) };
-    // dbg!(hwnd);
+    let title = PCSTR::from_raw(INTERNAL_WINDOW_TITLE.as_bytes().as_ptr());
+    let hwnd = unsafe { FindWindowA(None, title) };
+    dbg!(hwnd);
 
     // let active_window = active_win_pos_rs::get_active_window().expect("Active window should exist");
     // println!("active window: {active_window:#?}");
@@ -169,7 +170,7 @@ pub fn dispose_sidebar(settings: Arc<Mutex<MySettings>>) {
 }
 
 fn set_window_unpeekable(handle: HWND) {
-    let exstyle = unsafe { GetWindowLongPtrW(handle, GWL_EXSTYLE) };
+    let exstyle = unsafe { GetWindowLongPtrA(handle, GWL_EXSTYLE) };
     print_last_error();
 
     // unset appwindow: Remove from taskbar. set toolwindow: remove from alt-tab
@@ -177,7 +178,7 @@ fn set_window_unpeekable(handle: HWND) {
     new_exstyle &= !WS_EX_APPWINDOW.0 as isize;
 
     unsafe {
-        SetWindowLongPtrW(handle, GWL_EXSTYLE, new_exstyle);
+        SetWindowLongPtrA(handle, GWL_EXSTYLE, new_exstyle);
     }
     print_last_error();
 }

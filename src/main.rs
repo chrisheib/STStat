@@ -39,6 +39,7 @@ mod system_info;
 
 // On read problems, run: lodctr /r
 pub const UPDATE_INTERVAL_MILLIS: i64 = 1000;
+pub const INTERNAL_WINDOW_TITLE: &str = "RS_Sidebar\0";
 
 // Right Screen, Right side
 pub const SIZE: egui::Vec2 = egui::Vec2 {
@@ -152,7 +153,7 @@ fn main() -> Result<(), eframe::Error> {
     init_system(&mut appstate);
 
     eframe::run_native(
-        "RS_Sidebar", // unused title
+        INTERNAL_WINDOW_TITLE, // title used for identifying window to grab handle
         options,
         Box::new(|cc| {
             let mut v = Visuals::dark();
