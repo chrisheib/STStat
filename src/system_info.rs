@@ -111,14 +111,13 @@ fn filter_networks(appdata: &mut MyApp) -> Vec<(String, MyNetworkData)> {
         .networks()
         .iter()
         .filter(|i| {
-            appdata
+            *appdata
                 .settings
                 .lock()
                 .current_settings
                 .networks
                 .entry(i.0.to_string())
                 .or_default()
-                .clone()
         })
         .map(|(n, d)| {
             (
@@ -250,15 +249,17 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
         fan_percentage = nodes
             .iter()
             .find(|n| n.Text == "Controls")
-            .unwrap()
-            .Children[0]
-            .Value
-            .split_whitespace()
-            .next()
-            .unwrap()
-            .replace(',', ".")
-            .parse::<f32>()
-            .unwrap();
+            .map(|n| {
+                n.Children[0]
+                    .Value
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or_default()
+                    .replace(',', ".")
+                    .parse::<f32>()
+                    .unwrap_or_default()
+            })
+            .unwrap_or_default();
         timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
 
         utilization = nodes.iter().find(|n| n.Text == "Load").unwrap().Children[0]
@@ -301,7 +302,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
         .gpu_mem_buffer
         .add((g.memory_used / g.memory_total) as f64);
     appdata
-        .gpu_pow_buffer
+        .gpu_power_buffer
         .add((g.power_usage / g.power_limit) as f64);
 
     if perf_trace && appdata.framecount < 1000 {
@@ -381,7 +382,7 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
                         text,
                         n.Value
                             .replace("°C", "")
-                            .replace(",", ".")
+                            .replace(',', ".")
                             .trim()
                             .parse::<f32>()
                             .unwrap_or_default(),
@@ -425,7 +426,7 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
                 EdgyProgressBar::new(max_temp / 100.0)
                     .text(RichText::new(format!("{max_temp:.0} °C")).small().strong())
                     .desired_width(SIZE.x / 2.0 - 5.0)
-                    .colored_dot(Some(auto_color(2))),
+                    .colored_dot(Some(auto_color(3))),
             );
         });
 
@@ -441,6 +442,19 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
                 .strong(),
             )
             .colored_dot(Some(auto_color(1))),
+    );
+    let power = appdata.cpu_power_buffer.read();
+    let current_power = power.last().copied().unwrap_or_default();
+    let max_power = appdata.settings.lock().current_settings.max_cpu_power;
+
+    ui.add(
+        EdgyProgressBar::new((current_power / max_power) as f32)
+            .text(
+                RichText::new(format!("Pow: {current_power:.0}W / {max_power:.0}W",))
+                    .small()
+                    .strong(),
+            )
+            .colored_dot(Some(auto_color(2))),
     );
 
     Grid::new("cpu_grid_cores")
@@ -479,6 +493,12 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
             .collect::<PlotPoints>(),
     );
 
+    let power_line = Line::new(
+        (0..appdata.cpu_power_buffer.capacity())
+            .map(|i| [i as f64, { (power[i] / max_power) * 100.0 }])
+            .collect::<PlotPoints>(),
+    );
+
     let temp_line = Line::new(
         (0..appdata.cpu_maxtemp_buffer.capacity())
             .map(|i| [i as f64, { max_temp_line[i] as f64 }])
@@ -486,7 +506,12 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
     );
 
     step_timing(appdata, crate::CurrentStep::CPU);
-    add_graph("cpu", ui, vec![cpu_line, ram_line, temp_line], 100.5);
+    add_graph(
+        "cpu",
+        ui,
+        vec![cpu_line, ram_line, power_line, temp_line],
+        100.5,
+    );
     step_timing(appdata, crate::CurrentStep::CPUGraph);
 
     ui.separator();
@@ -588,9 +613,9 @@ fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
             .collect::<PlotPoints>(),
     );
 
-    let pow_buf = appdata.gpu_pow_buffer.read();
+    let pow_buf = appdata.gpu_power_buffer.read();
     let pow_line = Line::new(
-        (0..appdata.gpu_pow_buffer.capacity())
+        (0..appdata.gpu_power_buffer.capacity())
             .map(|i| [i as f64, { pow_buf[i] * 100.0 }])
             .collect::<PlotPoints>(),
     );
@@ -839,7 +864,7 @@ fn show_drives(appdata: &MyApp, ui: &mut Ui) {
         let values = diskbuffer.read();
         lines.push(Line::new(
             (0..diskbuffer.capacity())
-                .map(|i| [i as f64, { values[i] as f64 }])
+                .map(|i| [i as f64, { values[i] }])
                 .collect::<PlotPoints>(),
         ));
     }
@@ -1082,7 +1107,7 @@ fn refresh_cpu(appdata: &mut MyApp) {
                             text,
                             n.Value
                                 .replace("°C", "")
-                                .replace(",", ".")
+                                .replace(',', ".")
                                 .trim()
                                 .parse::<f32>()
                                 .unwrap_or_default(),
@@ -1106,6 +1131,37 @@ fn refresh_cpu(appdata: &mut MyApp) {
         .copied();
 
     appdata.cpu_maxtemp_buffer.add(max_temp.unwrap_or(0.0));
+
+    let cpu_power = if let Some(ohw) = ohw_opt.as_ref() {
+        ohw.Children[0]
+            .Children
+            .iter()
+            .find(|n| n.ImageURL == "images_icon/cpu.png")
+            .unwrap()
+            .Children
+            .iter()
+            .find(|n| n.Text == "Powers")
+            .unwrap()
+            .Children
+            .iter()
+            .find(|n| n.Text == "CPU Package")
+            .unwrap()
+            .Value
+            .replace('W', "")
+            .replace(',', ".")
+            .trim()
+            .parse::<f64>()
+            .unwrap_or_default()
+    } else {
+        0.0
+    };
+
+    let mut s = appdata.settings.lock();
+    if cpu_power > s.current_settings.max_cpu_power {
+        s.current_settings.max_cpu_power = cpu_power;
+    }
+    drop(s);
+    appdata.cpu_power_buffer.add(cpu_power);
 }
 
 #[derive(Deserialize, Default, Debug, Clone)]

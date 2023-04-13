@@ -78,7 +78,7 @@ pub fn get_pdh_process_data(process_metric_handles: &ProcessMetricHandles) -> Ve
 
         let ram_dwformat = PDH_FMT(PDH_FMT_LARGE.0 | 0x00008000);
         let mut ram_itemcount = 1500;
-        let mut ram_lpdwbuffersize = (24 * ram_itemcount) as u32;
+        let mut ram_lpdwbuffersize = 24 * ram_itemcount;
         let result = PdhGetFormattedCounterArrayA(
             process_metric_handles.ram_handle,
             ram_dwformat,
@@ -95,7 +95,7 @@ pub fn get_pdh_process_data(process_metric_handles: &ProcessMetricHandles) -> Ve
         // https://tyleo.github.io/sharedlib/doc/winapi/pdh/constant.PDH_FMT_NOSCALE.html
         let cpu_dwformat = PDH_FMT(512 | 0x8000); // double: 512 noscale: 4096, fmt1000: 8192, nocap: 32768
         let mut cpu_itemcount = 1500;
-        let mut cpu_lpdwbuffersize = (24 * cpu_itemcount) as u32;
+        let mut cpu_lpdwbuffersize = 24 * cpu_itemcount;
         let result = PdhGetFormattedCounterArrayA(
             process_metric_handles.cpu_handle,
             cpu_dwformat,

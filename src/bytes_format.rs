@@ -43,16 +43,16 @@ pub fn format_bytes(b: f64) -> String {
     }
     if b < 1024.0 {
         if b < 10.0 {
-            return format!("{b:.1} PB");
+            format!("{b:.1} PB")
         } else {
-            return format!("{b:.0} PB");
+            format!("{b:.0} PB")
         }
     } else {
         b /= 1024.0;
         if b < 10.0 {
-            return format!("{b:.1} EB");
+            format!("{b:.1} EB")
         } else {
-            return format!("{b:.0} EB");
+            format!("{b:.0} EB")
         }
     }
 }

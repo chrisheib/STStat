@@ -64,7 +64,7 @@ fn main() -> Result<(), eframe::Error> {
     ctrlc::set_handler(move || {
         println!("received Ctrl+C, removing sidebar");
         dispose_sidebar(cancel_settings.clone());
-        unsafe { PdhCloseQuery(pdh_query_handle.clone()) };
+        unsafe { PdhCloseQuery(pdh_query_handle) };
         std::process::exit(0);
     })
     .expect("Error setting Ctrl-C handler");
@@ -79,6 +79,41 @@ fn main() -> Result<(), eframe::Error> {
     rt.spawn(ohw_thread(thread_ohw));
     let thread_update_available = update_available.clone();
     thread::spawn(move || check_update_thread(thread_update_available));
+
+    let mut appstate = MyApp {
+        system_status: System::new_all(),
+        ping_buffer,
+        firstupdate: false,
+        framecount: 0,
+        next_update: Default::default(),
+        windows_performance_query_handle: pdh_query_handle,
+        disk_time_value_handle_map: Default::default(),
+        core_time_value_handle_map: Default::default(),
+        cpu_buffer: CircleVec::new(),
+        cpu_maxtemp_buffer: CircleVec::new(),
+        cpu_power_buffer: CircleVec::new(),
+        ram_buffer: CircleVec::new(),
+        nvid_info: Nvml::init().unwrap(),
+        ohw_info,
+        rt,
+        gpu: None,
+        timing: CircleVec::new(),
+        current_frame_start: Instant::now(),
+        cur_ram: 0.0,
+        total_ram: 0.0,
+        net_up_buffer: Default::default(),
+        net_down_buffer: Default::default(),
+        gpu_buffer: CircleVec::new(),
+        gpu_mem_buffer: CircleVec::new(),
+        gpu_power_buffer: CircleVec::new(),
+        show_settings: false,
+        settings: settings.clone(),
+        disk_buffer: Default::default(),
+        processes: vec![],
+        process_metric_handles: Default::default(),
+        update_available,
+    };
+    get_screen_size(&appstate);
 
     let s = settings.lock();
     let initial_window_size = (
@@ -104,41 +139,6 @@ fn main() -> Result<(), eframe::Error> {
         ..Default::default()
     };
 
-    let mut appstate = MyApp {
-        system_status: System::new_all(),
-        ping_buffer,
-        firstupdate: false,
-        framecount: 0,
-        next_update: Default::default(),
-        windows_performance_query_handle: pdh_query_handle,
-        disk_time_value_handle_map: Default::default(),
-        core_time_value_handle_map: Default::default(),
-        cpu_buffer: CircleVec::new(),
-        cpu_maxtemp_buffer: CircleVec::new(),
-        ram_buffer: CircleVec::new(),
-        nvid_info: Nvml::init().unwrap(),
-        ohw_info,
-        rt,
-        gpu: None,
-        timing: CircleVec::new(),
-        current_frame_start: Instant::now(),
-        cur_ram: 0.0,
-        total_ram: 0.0,
-        net_up_buffer: Default::default(),
-        net_down_buffer: Default::default(),
-        gpu_buffer: CircleVec::new(),
-        gpu_mem_buffer: CircleVec::new(),
-        gpu_pow_buffer: CircleVec::new(),
-        show_settings: false,
-        settings: settings.clone(),
-        disk_buffer: Default::default(),
-        processes: vec![],
-        process_metric_handles: Default::default(),
-        update_available,
-    };
-
-    get_screen_size(&appstate);
-
     init_system(&mut appstate);
 
     eframe::run_native(
@@ -155,7 +155,7 @@ fn main() -> Result<(), eframe::Error> {
 
     dispose_sidebar(settings.clone());
 
-    unsafe { PdhCloseQuery(pdh_query_handle.clone()) };
+    unsafe { PdhCloseQuery(pdh_query_handle) };
 
     Ok(())
 }
@@ -215,7 +215,7 @@ fn check_update_thread(update_available: Arc<AtomicBool>) -> ! {
             let cur_ver = status.current_version();
             let new_ver = status.get_latest_release().unwrap_or_default();
             update_available.store(
-                dbg!(cur_ver) != dbg!(new_ver.version),
+                cur_ver != new_ver.version,
                 std::sync::atomic::Ordering::Relaxed,
             );
         }
@@ -260,6 +260,7 @@ pub struct MyApp {
     pub ping_buffer: Arc<CircleVec<u64, 100>>,
     pub cpu_buffer: Arc<CircleVec<f32, 100>>,
     pub cpu_maxtemp_buffer: Arc<CircleVec<f32, 100>>,
+    pub cpu_power_buffer: Arc<CircleVec<f64, 100>>,
     pub ram_buffer: Arc<CircleVec<f32, 100>>,
     pub windows_performance_query_handle: isize,
     pub disk_time_value_handle_map: Vec<(String, isize, f64)>,
@@ -276,7 +277,7 @@ pub struct MyApp {
     pub net_down_buffer: HashMap<String, Arc<CircleVec<f64, 100>>>,
     pub gpu_buffer: Arc<CircleVec<f64, 100>>,
     pub gpu_mem_buffer: Arc<CircleVec<f64, 100>>,
-    pub gpu_pow_buffer: Arc<CircleVec<f64, 100>>,
+    pub gpu_power_buffer: Arc<CircleVec<f64, 100>>,
     pub show_settings: bool,
     pub settings: Arc<Mutex<MySettings>>,
     pub disk_buffer: HashMap<String, Arc<CircleVec<f64, 100>>>,
@@ -329,7 +330,7 @@ impl eframe::App for MyApp {
         if !self.firstupdate && self.framecount > 1 {
             println!("Setup sidebar");
             self.firstupdate = true;
-            sidebar::setup_sidebar(&self);
+            sidebar::setup_sidebar(self);
             let s = self.settings.lock();
             frame.set_window_pos(
                 (
@@ -380,9 +381,7 @@ impl eframe::App for MyApp {
                 system_info::set_system_info_components(self, ui);
                 ui.checkbox(&mut self.show_settings, "Show settings");
 
-                if self.show_settings {
-                    show_settings(self, ui);
-                }
+                show_settings(self, ui);
             });
 
             let time_to_next_second = 1000 - chrono::Local::now().timestamp_subsec_millis();
