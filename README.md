@@ -1,5 +1,5 @@
 # STStat
-Windows Sidebar showing various system information written in rust 🦀, inspired by various Windows Vista / 7 Gadgets.
+Windows Sidebar showing various system information written in rust 🦀, inspired by Windows Vista / 7 Gadgets.
 
 ![Preview](https://raw.githubusercontent.com/chrisheib/STStat/main/screenshot/desktop-main.jpg)
 
@@ -22,13 +22,14 @@ Needs [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwa
 * CPU and RAM:
   * CPU usage
   * CPU temp (°C)
-  * RAM usage
-  * Core load
+  * RAM usage and total
+  * Power usage and limit (dynamic)
+  * Individual core load and temps
 * GPU
   * GPU usage
   * VRAM usage and total
-  * Power usage and target
-  * Core clock
+  * Power usage and limit
+  * Core clock and max
   * GPU temp (°C)
 * Drives
   * Free Disk space 
@@ -36,7 +37,7 @@ Needs [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwa
 * Net (Configurable via settings)
   * Up and Down traffic
 * Ping
-  * Ping google once a second. 
+  * Ping google once a second
   * M: Max ping in the last 2 minutes
   * C: Time of last ping response
 * Processes (Doubleclick to open task manager!)
