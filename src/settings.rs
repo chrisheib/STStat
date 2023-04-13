@@ -21,12 +21,14 @@ pub struct MySettings {
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Clone)]
+#[serde(default)]
 pub struct InnerSettings {
     pub networks: HashMap<String, bool>,
     pub display_right: bool,
     pub screen_id: usize,
     pub location: Location,
     pub track_timings: bool,
+    pub max_cpu_power: f64,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Clone)]
@@ -42,10 +44,12 @@ impl MySettings {
         let inner: InnerSettings =
             serde_json::from_str(&fs::read_to_string("conf.json").unwrap_or_default())
                 .unwrap_or_default();
-        Self {
+        let s = Self {
             current_settings: inner.clone(),
             loaded_settings: inner,
-        }
+        };
+        s.save();
+        s
     }
 
     pub fn save(&self) {
@@ -61,44 +65,45 @@ pub fn show_settings(appdata: &mut MyApp, ui: &mut Ui) {
             || settings.current_settings.screen_id != settings.loaded_settings.screen_id
         {
             drop(settings);
-            get_screen_size(&appdata);
+            get_screen_size(appdata);
             dispose_sidebar(appdata.settings.clone());
-            setup_sidebar(&appdata);
+            setup_sidebar(appdata);
             settings = appdata.settings.lock();
         }
         settings.save();
         settings.loaded_settings = settings.current_settings.clone();
     }
-
-    ui.separator();
-    ui.label("Show Networks:");
-    for (net, _) in appdata.system_status.networks() {
-        let e = settings
-            .current_settings
-            .networks
-            .entry(net.to_string())
-            .or_insert(false);
-        ui.checkbox(e, &format!("{net}"));
-    }
-    ui.separator();
-    ui.label("Screen ID:");
-    ui.add(DragValue::new(&mut settings.current_settings.screen_id));
-    ui.checkbox(
-        &mut settings.current_settings.display_right,
-        "Display on right side:",
-    );
-    ui.separator();
-    ui.checkbox(&mut settings.current_settings.track_timings, "trace perf");
-    if ui.button("save trace").clicked() {
-        use std::io::prelude::*;
-        let file = File::create("timings.txt").unwrap();
-        let mut file = BufWriter::new(file);
-        appdata
-            .timing
-            .read()
-            .iter()
-            .filter(|s| s.step != CurrentStep::None)
-            .for_each(|s| writeln!(&mut file, "{}: {:?}", s.time.as_micros(), s.step).unwrap());
+    if appdata.show_settings {
+        ui.separator();
+        ui.label("Show Networks:");
+        for (net, _) in appdata.system_status.networks() {
+            let e = settings
+                .current_settings
+                .networks
+                .entry(net.to_string())
+                .or_insert(false);
+            ui.checkbox(e, net);
+        }
+        ui.separator();
+        ui.label("Screen ID:");
+        ui.add(DragValue::new(&mut settings.current_settings.screen_id));
+        ui.checkbox(
+            &mut settings.current_settings.display_right,
+            "Display on right side:",
+        );
+        ui.separator();
+        ui.checkbox(&mut settings.current_settings.track_timings, "trace perf");
+        if ui.button("save trace").clicked() {
+            use std::io::prelude::*;
+            let file = File::create("timings.txt").unwrap();
+            let mut file = BufWriter::new(file);
+            appdata
+                .timing
+                .read()
+                .iter()
+                .filter(|s| s.step != CurrentStep::None)
+                .for_each(|s| writeln!(&mut file, "{}: {:?}", s.time.as_micros(), s.step).unwrap());
+        }
     }
     drop(settings);
 }
@@ -124,17 +129,16 @@ pub fn get_screen_size(appdata: &MyApp) {
     let taskbarsize_main = 48.0 * mainscale;
     // println!("Taskbar_height: {taskbarsize_main}");
 
-    let display_id;
-    if settings.current_settings.screen_id < display_infos.len() {
-        display_id = settings.current_settings.screen_id
+    let display_id = if settings.current_settings.screen_id < display_infos.len() {
+        settings.current_settings.screen_id
     } else {
-        display_id = 0
-    }
+        0
+    };
 
     let target_display = display_infos[display_id];
     let target_taskbar_size = taskbarsize_main * target_display.scale_factor;
 
-    let width = (SIZE.x as f32 * target_display.scale_factor) as i32;
+    let width = (SIZE.x * target_display.scale_factor) as i32;
     let height = target_display.height as i32 - target_taskbar_size as i32;
 
     let x = if !settings.current_settings.display_right {
