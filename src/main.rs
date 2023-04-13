@@ -3,7 +3,7 @@
 
 use std::{
     collections::HashMap,
-    panic::{self},
+    panic,
     sync::{atomic::AtomicBool, Arc},
     thread,
     time::Instant,
@@ -86,6 +86,7 @@ fn main() -> Result<(), eframe::Error> {
         firstupdate: false,
         framecount: 0,
         next_update: Default::default(),
+        next_screen_update: Default::default(),
         windows_performance_query_handle: pdh_query_handle,
         disk_time_value_handle_map: Default::default(),
         core_time_value_handle_map: Default::default(),
@@ -258,6 +259,7 @@ pub struct MyApp {
     pub framecount: u64,
     pub system_status: System,
     pub next_update: NaiveDateTime,
+    pub next_screen_update: NaiveDateTime,
     pub ping_buffer: Arc<CircleVec<u64, 100>>,
     pub cpu_buffer: Arc<CircleVec<f32, 100>>,
     pub cpu_maxtemp_buffer: Arc<CircleVec<f32, 100>>,
@@ -297,6 +299,10 @@ impl eframe::App for MyApp {
         self.current_frame_start = Instant::now();
         step_timing(self, CurrentStep::Begin);
         let now = Local::now().naive_local();
+        if now > self.next_screen_update {
+            get_screen_size(self);
+            self.next_screen_update = now + Duration::seconds(20);
+        }
         let mut update = false;
         if now > self.next_update {
             refresh(self);
