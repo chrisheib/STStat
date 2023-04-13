@@ -17,6 +17,7 @@ use eframe::{
 };
 use egui_extras::{Column, TableBuilder};
 use itertools::Itertools;
+use nvml_wrapper::enum_wrappers::device::Clock;
 use serde::Deserialize;
 use sysinfo::{CpuExt, CpuRefreshKind, DiskExt, NetworkExt, NetworksExt, SystemExt};
 use tokio::process::Command;
@@ -143,6 +144,7 @@ pub struct GpuData {
     power_limit: f32,
     fan_percentage: f32,
     clock_mhz: f32,
+    max_clock: f32,
 }
 
 fn timing_to_str(timestamp: std::time::Instant, text: &mut String, perf_trace: bool) {
@@ -168,11 +170,14 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
     let mut clock_mhz = 0.0;
 
     let power_limit;
+    let max_clock;
     if let Some(gpu) = &appdata.gpu {
         power_limit = gpu.power_limit;
+        max_clock = gpu.max_clock;
     } else {
         let gpu = appdata.nvid_info.device_by_index(0).unwrap();
         power_limit = gpu.enforced_power_limit().unwrap() as f32 / 1000.0;
+        max_clock = gpu.max_clock_info(Clock::Graphics).unwrap_or_default() as f32;
     }
     timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
 
@@ -294,6 +299,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
         power_limit,
         fan_percentage,
         clock_mhz,
+        max_clock,
     };
     timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
 
@@ -304,6 +310,7 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
     appdata
         .gpu_power_buffer
         .add((g.power_usage / g.power_limit) as f64);
+    appdata.gpu_temp_buffer.add((g.temperature) as f64);
 
     if perf_trace && appdata.framecount < 1000 {
         println!("{text}");
@@ -519,18 +526,39 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
 
 fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
     ui.vertical_centered(|ui| ui.label("GPU"));
-    ui.add(
-        EdgyProgressBar::new(appdata.gpu.as_ref().unwrap().utilization as f32 / 100.0)
-            .text(
-                RichText::new(format!(
-                    "GPU: {:.1}%",
-                    appdata.gpu.as_ref().unwrap().utilization
-                ))
-                .small()
-                .strong(),
-            )
-            .colored_dot(Some(auto_color(0))),
-    );
+
+    Grid::new("gpu_grid_upper")
+        .num_columns(2)
+        .spacing([2.0, 2.0])
+        .striped(true)
+        .show(ui, |ui| {
+            ui.add(
+                EdgyProgressBar::new(appdata.gpu.as_ref().unwrap().utilization as f32 / 100.0)
+                    .text(
+                        RichText::new(format!(
+                            "GPU: {:.1}%",
+                            appdata.gpu.as_ref().unwrap().utilization
+                        ))
+                        .small()
+                        .strong(),
+                    )
+                    .desired_width(SIZE.x / 2.0 - 5.0)
+                    .colored_dot(Some(auto_color(0))),
+            );
+            ui.add(
+                EdgyProgressBar::new(appdata.gpu.as_ref().unwrap().temperature / 100.0)
+                    .text(
+                        RichText::new(format!(
+                            "{:.0} °C",
+                            appdata.gpu.as_ref().unwrap().temperature
+                        ))
+                        .small()
+                        .strong(),
+                    )
+                    .desired_width(SIZE.x / 2.0 - 5.0)
+                    .colored_dot(Some(auto_color(3))),
+            );
+        });
 
     ui.add(
         EdgyProgressBar::new(
@@ -563,6 +591,21 @@ fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
         )
         .colored_dot(Some(auto_color(2))),
     );
+    ui.add(
+        EdgyProgressBar::new(
+            appdata.gpu.as_ref().unwrap().clock_mhz
+                / appdata.gpu.as_ref().unwrap().max_clock.max(0.01),
+        )
+        .text(
+            RichText::new(format!(
+                "Clk: {:.0}MHz / {:.0}MHz",
+                appdata.gpu.as_ref().unwrap().clock_mhz,
+                appdata.gpu.as_ref().unwrap().max_clock
+            ))
+            .small()
+            .strong(),
+        ),
+    );
 
     ui.push_id("gpu table", |ui| {
         let table = TableBuilder::new(ui)
@@ -582,19 +625,6 @@ fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
                         .strong(),
                     );
                 });
-                // temp
-                row.col(|ui| {
-                    ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                        ui.label(
-                            RichText::new(format!(
-                                "{:.0} °C",
-                                appdata.gpu.as_ref().unwrap().temperature
-                            ))
-                            .small()
-                            .strong(),
-                        );
-                    });
-                });
             });
         });
     });
@@ -613,6 +643,13 @@ fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
             .collect::<PlotPoints>(),
     );
 
+    let temp_buf = appdata.gpu_temp_buffer.read();
+    let temp_line = Line::new(
+        (0..appdata.gpu_temp_buffer.capacity())
+            .map(|i| [i as f64, { temp_buf[i] }])
+            .collect::<PlotPoints>(),
+    );
+
     let pow_buf = appdata.gpu_power_buffer.read();
     let pow_line = Line::new(
         (0..appdata.gpu_power_buffer.capacity())
@@ -620,7 +657,12 @@ fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
             .collect::<PlotPoints>(),
     );
 
-    add_graph("gpu", ui, vec![gpu_line, mem_line, pow_line], 100.0);
+    add_graph(
+        "gpu",
+        ui,
+        vec![gpu_line, mem_line, pow_line, temp_line],
+        100.0,
+    );
 
     ui.separator();
 }
