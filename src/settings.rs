@@ -29,6 +29,7 @@ pub struct InnerSettings {
     pub location: Location,
     pub track_timings: bool,
     pub max_cpu_power: f64,
+    pub use_plain_dark_background: bool,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Clone)]
@@ -90,6 +91,11 @@ pub fn show_settings(appdata: &mut MyApp, ui: &mut Ui) {
         ui.checkbox(
             &mut settings.current_settings.display_right,
             "Display on right side:",
+        );
+        ui.separator();
+        ui.checkbox(
+            &mut settings.current_settings.use_plain_dark_background,
+            "Use plain dark background color",
         );
         ui.separator();
         ui.checkbox(&mut settings.current_settings.track_timings, "trace perf");

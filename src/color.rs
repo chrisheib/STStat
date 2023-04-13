@@ -20,3 +20,17 @@ pub fn auto_color(index: i32) -> Color32 {
         _ => todo!("auto_color({index}) not implemented yet, please report!"),
     }
 }
+
+pub fn auto_color_dark(index: i32) -> Color32 {
+    let c = auto_color(index);
+    Color32::from_rgba_premultiplied(
+        (c.r() as f32 * 0.5) as u8,
+        (c.g() as f32 * 0.5) as u8,
+        (c.b() as f32 * 0.5) as u8,
+        c.a(),
+    )
+}
+
+pub fn get_base_background() -> Color32 {
+    Color32::from_rgba_premultiplied(30, 32, 36, 255)
+}

@@ -1,7 +1,7 @@
 use crate::{
     bytes_format::format_bytes,
     circlevec::CircleVec,
-    color::auto_color,
+    color::{auto_color_dark, get_base_background},
     components::edgy_progress::EdgyProgressBar,
     process::{add_english_counter, get_pdh_process_data, init_process_metrics, Process},
     sidebar::STATIC_HWND,
@@ -46,7 +46,7 @@ pub fn set_system_info_components(appdata: &mut MyApp, ui: &mut Ui) {
 }
 
 fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
-    ui.vertical_centered(|ui| ui.label("Net"));
+    ui.vertical_centered(|ui| ui.label("Networks"));
 
     for (interface_name, data) in filter_networks(appdata) {
         ui.push_id(format!("network graph {interface_name}"), |ui| {
@@ -428,13 +428,13 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
                             .strong(),
                     )
                     .desired_width(SIZE.x / 2.0 - 5.0)
-                    .colored_dot(Some(auto_color(0))),
+                    .fill(auto_color_dark(0)),
             );
             ui.add(
                 EdgyProgressBar::new(max_temp / 100.0)
                     .text(RichText::new(format!("{max_temp:.0} °C")).small().strong())
                     .desired_width(SIZE.x / 2.0 - 5.0)
-                    .colored_dot(Some(auto_color(3))),
+                    .fill(auto_color_dark(3)),
             );
         });
 
@@ -449,7 +449,7 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
                 .small()
                 .strong(),
             )
-            .colored_dot(Some(auto_color(1))),
+            .fill(auto_color_dark(1)),
     );
     let power = appdata.cpu_power_buffer.read();
     let current_power = power.last().copied().unwrap_or_default();
@@ -462,7 +462,7 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
                     .small()
                     .strong(),
             )
-            .colored_dot(Some(auto_color(2))),
+            .fill(auto_color_dark(2)),
     );
 
     Grid::new("cpu_grid_cores")
@@ -545,7 +545,7 @@ fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
                             .strong(),
                         )
                         .desired_width(SIZE.x / 2.0 - 5.0)
-                        .colored_dot(Some(auto_color(0))),
+                        .fill(auto_color_dark(0)),
                 );
                 ui.add(
                     EdgyProgressBar::new(appdata.gpu.as_ref().unwrap().temperature / 100.0)
@@ -558,7 +558,7 @@ fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
                             .strong(),
                         )
                         .desired_width(SIZE.x / 2.0 - 5.0)
-                        .colored_dot(Some(auto_color(3))),
+                        .fill(auto_color_dark(3)),
                 );
             });
 
@@ -576,7 +576,7 @@ fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
                 .small()
                 .strong(),
             )
-            .colored_dot(Some(auto_color(1))),
+            .fill(auto_color_dark(1)),
         );
 
         ui.add(
@@ -593,7 +593,7 @@ fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
                 .small()
                 .strong(),
             )
-            .colored_dot(Some(auto_color(2))),
+            .fill(auto_color_dark(2)),
         );
         ui.add(
             EdgyProgressBar::new(
@@ -610,28 +610,6 @@ fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
                 .strong(),
             ),
         );
-
-        ui.push_id("gpu table", |ui| {
-            let table = TableBuilder::new(ui)
-                .striped(true)
-                .columns(Column::exact((SIZE.x * 0.5) - 9.5), 2);
-
-            table.body(|mut body| {
-                body.row(12.0, |mut row| {
-                    // Clock
-                    row.col(|ui| {
-                        ui.label(
-                            RichText::new(format!(
-                                "{:.0} MHz",
-                                appdata.gpu.as_ref().unwrap().clock_mhz
-                            ))
-                            .small()
-                            .strong(),
-                        );
-                    });
-                });
-            });
-        });
 
         let gpu_buf = appdata.gpu_buffer.read();
         let gpu_line = Line::new(
@@ -886,7 +864,7 @@ fn show_drives(appdata: &MyApp, ui: &mut Ui) {
                             (d.total_space() - d.available_space()) as f32 / d.total_space() as f32,
                         )
                         .desired_width(
-                            appdata.settings.lock().current_settings.location.width as f32 * 0.5,
+                            appdata.settings.lock().current_settings.location.width as f32 * 0.55,
                         )
                         .text(
                             RichText::new(format!(
@@ -895,11 +873,9 @@ fn show_drives(appdata: &MyApp, ui: &mut Ui) {
                             ))
                             .small()
                             .strong(),
-                        ),
+                        )
+                        .fill(auto_color_dark(i as i32)),
                     );
-                    ui.add(Label::new(
-                        RichText::new("⏺").size(8.0).color(auto_color(i as i32)),
-                    ));
                 });
                 ui.end_row();
             }
@@ -965,7 +941,10 @@ pub fn init_system(appdata: &mut MyApp) {
     unsafe { PdhCollectQueryData(appdata.windows_performance_query_handle) };
 }
 
-pub fn get_windows_glass_color() -> Color32 {
+pub fn get_windows_glass_color(use_plain_blackground: bool) -> Color32 {
+    if use_plain_blackground {
+        return get_base_background();
+    }
     let mut col: u32 = 0;
     let mut opaque: BOOL = BOOL(0);
     unsafe {
@@ -1045,10 +1024,16 @@ fn refresh_processes(appdata: &mut MyApp) {
     appdata.processes = get_pdh_process_data(&appdata.process_metric_handles);
 }
 
-pub fn refresh_color(ui: &mut Ui) {
+pub fn refresh_color(appdata: &mut MyApp, ui: &mut Ui) {
     let v = ui.visuals_mut();
     v.override_text_color = Some(Color32::from_gray(250));
-    v.window_fill = get_windows_glass_color();
+    v.window_fill = get_windows_glass_color(
+        appdata
+            .settings
+            .lock()
+            .current_settings
+            .use_plain_dark_background,
+    );
 }
 
 pub struct MyNetworkData {
@@ -1098,7 +1083,7 @@ fn refresh_system_memory(appdata: &mut MyApp) {
             .unwrap()
             .replace(',', ".")
             .parse::<f32>()
-            .unwrap()
+            .unwrap_or_default()
             * 1024.0
             * 1024.0
             * 1024.0;
@@ -1114,7 +1099,7 @@ fn refresh_system_memory(appdata: &mut MyApp) {
                 .unwrap()
                 .replace(',', ".")
                 .parse::<f32>()
-                .unwrap()
+                .unwrap_or_default()
                 * 1024.0
                 * 1024.0
                 * 1024.0;

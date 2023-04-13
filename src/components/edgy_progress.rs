@@ -115,7 +115,10 @@ impl Widget for EdgyProgressBar {
             );
             let inner_rect = Rect::from_min_size(
                 outer_rect.min,
-                vec2(outer_rect.width() * progress, outer_rect.height()),
+                vec2(
+                    (outer_rect.width() * progress).max(2.0),
+                    outer_rect.height(),
+                ),
             );
 
             let (dark, bright) = (0.7, 1.0);
@@ -130,7 +133,7 @@ impl Widget for EdgyProgressBar {
                 inner_rect,
                 Rounding::none(),
                 Color32::from(
-                    Rgba::from(fill.unwrap_or(visuals.selection.bg_fill)) * color_factor as f32,
+                    Rgba::from(fill.unwrap_or(Color32::from_rgb(0, 83, 116))) * color_factor as f32,
                 ),
                 Stroke::NONE,
             );

@@ -132,6 +132,7 @@ fn main() -> Result<(), eframe::Error> {
         s.current_settings.location.x as f32,
         s.current_settings.location.y as f32,
     );
+    let use_plain_background = s.current_settings.use_plain_dark_background;
     drop(s);
 
     let options = eframe::NativeOptions {
@@ -152,10 +153,10 @@ fn main() -> Result<(), eframe::Error> {
     eframe::run_native(
         INTERNAL_WINDOW_TITLE, // title used for identifying window to grab handle
         options,
-        Box::new(|cc| {
+        Box::new(move |cc| {
             let mut v = Visuals::dark();
             v.override_text_color = Some(Color32::from_gray(250));
-            v.window_fill = get_windows_glass_color();
+            v.window_fill = get_windows_glass_color(use_plain_background);
             cc.egui_ctx.set_visuals(v);
             Box::new(appstate)
         }),
@@ -356,10 +357,15 @@ impl eframe::App for MyApp {
             drop(s);
             println!("Setup sidebar done");
         }
+        let use_plain_background = self
+            .settings
+            .lock()
+            .current_settings
+            .use_plain_dark_background;
 
-        custom_window_frame(ctx, frame, "STStat", |ui| {
+        custom_window_frame(use_plain_background, ctx, frame, "STStat", |ui| {
             if update {
-                refresh_color(ui);
+                refresh_color(self, ui);
             }
             ui.columns(2, |ui| {
                 ui[0].add(Label::new(
@@ -411,6 +417,7 @@ impl eframe::App for MyApp {
 }
 
 fn custom_window_frame(
+    use_plain_background: bool,
     ctx: &egui::Context,
     frame: &mut eframe::Frame,
     title: &str,
@@ -419,7 +426,7 @@ fn custom_window_frame(
     use egui::*;
 
     let panel_frame = egui::Frame {
-        fill: { get_windows_glass_color() },
+        fill: { get_windows_glass_color(use_plain_background) },
         // rounding: 10.0.into(),
         stroke: Stroke {
             width: 0.0,
