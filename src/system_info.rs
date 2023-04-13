@@ -154,169 +154,170 @@ fn timing_to_str(timestamp: std::time::Instant, text: &mut String, perf_trace: b
 }
 
 pub fn refresh_gpu(appdata: &mut MyApp) {
-    step_timing(appdata, CurrentStep::UpdateGPU);
     let perf_trace = appdata.settings.lock().current_settings.track_timings;
-
-    let mut text = String::new();
-    timing_to_str(appdata.current_frame_start, &mut text, perf_trace); // , 96
-
-    let mut utilization = 0.0;
-    let mut temperature = 0.0;
-    let mut fan_percentage = 0.0;
-    let mut power_usage = 0.0;
-    let mut memory_free = 0.0;
-    let mut memory_used = 0.0;
-    let mut memory_total = 0.0;
-    let mut clock_mhz = 0.0;
-
-    let power_limit;
-    let max_clock;
-    if let Some(gpu) = &appdata.gpu {
-        power_limit = gpu.power_limit;
-        max_clock = gpu.max_clock;
-    } else {
-        let gpu = appdata.nvid_info.device_by_index(0).unwrap();
-        power_limit = gpu.enforced_power_limit().unwrap() as f32 / 1000.0;
-        max_clock = gpu.max_clock_info(Clock::Graphics).unwrap_or_default() as f32;
-    }
-    timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
-
-    let ohw = appdata.ohw_info.lock();
-    if let Some(ohw) = ohw.as_ref() {
-        let nodes = &ohw.Children[0]
-            .Children
-            .iter()
-            .find(|n| n.ImageURL == "images_icon/nvidia.png")
-            .unwrap()
-            .Children;
-        timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
-
-        temperature = nodes
-            .iter()
-            .find(|n| n.Text == "Temperatures")
-            .unwrap()
-            .Children[0]
-            .Value
-            .split_whitespace()
-            .next()
-            .unwrap()
-            .replace(',', ".")
-            .parse::<f32>()
-            .unwrap();
-        timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
-
-        power_usage = nodes.iter().find(|n| n.Text == "Powers").unwrap().Children[0]
-            .Value
-            .split_whitespace()
-            .next()
-            .unwrap()
-            .replace(',', ".")
-            .parse::<f32>()
-            .unwrap();
-        timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
-
-        memory_free = nodes.iter().find(|n| n.Text == "Data").unwrap().Children[0]
-            .Value
-            .split_whitespace()
-            .next()
-            .unwrap()
-            .replace(',', ".")
-            .parse::<f32>()
-            .unwrap()
-            * 1024.0
-            * 1024.0;
-        timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
-
-        memory_used = nodes.iter().find(|n| n.Text == "Data").unwrap().Children[1]
-            .Value
-            .split_whitespace()
-            .next()
-            .unwrap()
-            .replace(',', ".")
-            .parse::<f32>()
-            .unwrap()
-            * 1024.0
-            * 1024.0;
-        timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
-
-        memory_total = nodes.iter().find(|n| n.Text == "Data").unwrap().Children[2]
-            .Value
-            .split_whitespace()
-            .next()
-            .unwrap()
-            .replace(',', ".")
-            .parse::<f32>()
-            .unwrap()
-            * 1024.0
-            * 1024.0;
-        timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
-
-        fan_percentage = nodes
-            .iter()
-            .find(|n| n.Text == "Controls")
-            .map(|n| {
-                n.Children[0]
-                    .Value
-                    .split_whitespace()
-                    .next()
-                    .unwrap_or_default()
-                    .replace(',', ".")
-                    .parse::<f32>()
-                    .unwrap_or_default()
-            })
-            .unwrap_or_default();
-        timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
-
-        utilization = nodes.iter().find(|n| n.Text == "Load").unwrap().Children[0]
-            .Value
-            .split_whitespace()
-            .next()
-            .unwrap()
-            .replace(',', ".")
-            .parse::<f64>()
-            .unwrap();
-        timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
-
-        clock_mhz = nodes.iter().find(|n| n.Text == "Clocks").unwrap().Children[0]
-            .Value
-            .split_whitespace()
-            .next()
-            .unwrap()
-            .replace(',', ".")
-            .parse::<f32>()
-            .unwrap();
-        timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
-    };
-    drop(ohw);
-
-    let g = GpuData {
-        utilization,
-        temperature,
-        memory_free,
-        memory_used,
-        memory_total,
-        power_usage,
-        power_limit,
-        fan_percentage,
-        clock_mhz,
-        max_clock,
-    };
-    timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
-
-    appdata.gpu_buffer.add(g.utilization);
-    appdata
-        .gpu_mem_buffer
-        .add((g.memory_used / g.memory_total) as f64);
-    appdata
-        .gpu_power_buffer
-        .add((g.power_usage / g.power_limit) as f64);
-    appdata.gpu_temp_buffer.add((g.temperature) as f64);
-
-    if perf_trace && appdata.framecount < 1000 {
-        println!("{text}");
-    }
-    appdata.gpu = Some(g);
     step_timing(appdata, CurrentStep::UpdateGPU);
+    if let Some(gpu) = appdata.nvid_info.as_ref() {
+        let mut text = String::new();
+        timing_to_str(appdata.current_frame_start, &mut text, perf_trace); // , 96
+
+        let mut utilization = 0.0;
+        let mut temperature = 0.0;
+        let mut fan_percentage = 0.0;
+        let mut power_usage = 0.0;
+        let mut memory_free = 0.0;
+        let mut memory_used = 0.0;
+        let mut memory_total = 0.0;
+        let mut clock_mhz = 0.0;
+
+        let power_limit;
+        let max_clock;
+        if let Some(gpu) = &appdata.gpu {
+            power_limit = gpu.power_limit;
+            max_clock = gpu.max_clock;
+        } else {
+            let gpu = gpu.device_by_index(0).unwrap();
+            power_limit = gpu.enforced_power_limit().unwrap() as f32 / 1000.0;
+            max_clock = gpu.max_clock_info(Clock::Graphics).unwrap_or_default() as f32;
+        }
+        timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+
+        let ohw = appdata.ohw_info.lock();
+        if let Some(ohw) = ohw.as_ref() {
+            let nodes = &ohw.Children[0]
+                .Children
+                .iter()
+                .find(|n| n.ImageURL == "images_icon/nvidia.png")
+                .unwrap()
+                .Children;
+            timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+
+            temperature = nodes
+                .iter()
+                .find(|n| n.Text == "Temperatures")
+                .unwrap()
+                .Children[0]
+                .Value
+                .split_whitespace()
+                .next()
+                .unwrap()
+                .replace(',', ".")
+                .parse::<f32>()
+                .unwrap();
+            timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+
+            power_usage = nodes.iter().find(|n| n.Text == "Powers").unwrap().Children[0]
+                .Value
+                .split_whitespace()
+                .next()
+                .unwrap()
+                .replace(',', ".")
+                .parse::<f32>()
+                .unwrap();
+            timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+
+            memory_free = nodes.iter().find(|n| n.Text == "Data").unwrap().Children[0]
+                .Value
+                .split_whitespace()
+                .next()
+                .unwrap()
+                .replace(',', ".")
+                .parse::<f32>()
+                .unwrap()
+                * 1024.0
+                * 1024.0;
+            timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+
+            memory_used = nodes.iter().find(|n| n.Text == "Data").unwrap().Children[1]
+                .Value
+                .split_whitespace()
+                .next()
+                .unwrap()
+                .replace(',', ".")
+                .parse::<f32>()
+                .unwrap()
+                * 1024.0
+                * 1024.0;
+            timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+
+            memory_total = nodes.iter().find(|n| n.Text == "Data").unwrap().Children[2]
+                .Value
+                .split_whitespace()
+                .next()
+                .unwrap()
+                .replace(',', ".")
+                .parse::<f32>()
+                .unwrap()
+                * 1024.0
+                * 1024.0;
+            timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+
+            fan_percentage = nodes
+                .iter()
+                .find(|n| n.Text == "Controls")
+                .map(|n| {
+                    n.Children[0]
+                        .Value
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or_default()
+                        .replace(',', ".")
+                        .parse::<f32>()
+                        .unwrap_or_default()
+                })
+                .unwrap_or_default();
+            timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+
+            utilization = nodes.iter().find(|n| n.Text == "Load").unwrap().Children[0]
+                .Value
+                .split_whitespace()
+                .next()
+                .unwrap()
+                .replace(',', ".")
+                .parse::<f64>()
+                .unwrap();
+            timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+
+            clock_mhz = nodes.iter().find(|n| n.Text == "Clocks").unwrap().Children[0]
+                .Value
+                .split_whitespace()
+                .next()
+                .unwrap()
+                .replace(',', ".")
+                .parse::<f32>()
+                .unwrap();
+            timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+        };
+        drop(ohw);
+
+        let g = GpuData {
+            utilization,
+            temperature,
+            memory_free,
+            memory_used,
+            memory_total,
+            power_usage,
+            power_limit,
+            fan_percentage,
+            clock_mhz,
+            max_clock,
+        };
+        timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+
+        appdata.gpu_buffer.add(g.utilization);
+        appdata
+            .gpu_mem_buffer
+            .add((g.memory_used / g.memory_total) as f64);
+        appdata
+            .gpu_power_buffer
+            .add((g.power_usage / g.power_limit) as f64);
+        appdata.gpu_temp_buffer.add((g.temperature) as f64);
+
+        if perf_trace && appdata.framecount < 1000 {
+            println!("{text}");
+        }
+        appdata.gpu = Some(g);
+        step_timing(appdata, CurrentStep::UpdateGPU);
+    }
 }
 
 fn show_processes(appdata: &mut MyApp, ui: &mut Ui) {
@@ -525,146 +526,150 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
 }
 
 fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
-    ui.vertical_centered(|ui| ui.label("GPU"));
+    if appdata.nvid_info.is_some() {
+        ui.vertical_centered(|ui| ui.label("GPU"));
 
-    Grid::new("gpu_grid_upper")
-        .num_columns(2)
-        .spacing([2.0, 2.0])
-        .striped(true)
-        .show(ui, |ui| {
-            ui.add(
-                EdgyProgressBar::new(appdata.gpu.as_ref().unwrap().utilization as f32 / 100.0)
-                    .text(
-                        RichText::new(format!(
-                            "GPU: {:.1}%",
-                            appdata.gpu.as_ref().unwrap().utilization
-                        ))
-                        .small()
-                        .strong(),
-                    )
-                    .desired_width(SIZE.x / 2.0 - 5.0)
-                    .colored_dot(Some(auto_color(0))),
-            );
-            ui.add(
-                EdgyProgressBar::new(appdata.gpu.as_ref().unwrap().temperature / 100.0)
-                    .text(
-                        RichText::new(format!(
-                            "{:.0} °C",
-                            appdata.gpu.as_ref().unwrap().temperature
-                        ))
-                        .small()
-                        .strong(),
-                    )
-                    .desired_width(SIZE.x / 2.0 - 5.0)
-                    .colored_dot(Some(auto_color(3))),
-            );
-        });
-
-    ui.add(
-        EdgyProgressBar::new(
-            appdata.gpu.as_ref().unwrap().memory_used / appdata.gpu.as_ref().unwrap().memory_total,
-        )
-        .text(
-            RichText::new(format!(
-                "Mem: {} / {}",
-                format_bytes(appdata.gpu.as_ref().unwrap().memory_used as f64),
-                format_bytes(appdata.gpu.as_ref().unwrap().memory_total as f64)
-            ))
-            .small()
-            .strong(),
-        )
-        .colored_dot(Some(auto_color(1))),
-    );
-
-    ui.add(
-        EdgyProgressBar::new(
-            appdata.gpu.as_ref().unwrap().power_usage / appdata.gpu.as_ref().unwrap().power_limit,
-        )
-        .text(
-            RichText::new(format!(
-                "Pow: {:.0}W / {:.0}W",
-                appdata.gpu.as_ref().unwrap().power_usage,
-                appdata.gpu.as_ref().unwrap().power_limit
-            ))
-            .small()
-            .strong(),
-        )
-        .colored_dot(Some(auto_color(2))),
-    );
-    ui.add(
-        EdgyProgressBar::new(
-            appdata.gpu.as_ref().unwrap().clock_mhz
-                / appdata.gpu.as_ref().unwrap().max_clock.max(0.01),
-        )
-        .text(
-            RichText::new(format!(
-                "Clk: {:.0}MHz / {:.0}MHz",
-                appdata.gpu.as_ref().unwrap().clock_mhz,
-                appdata.gpu.as_ref().unwrap().max_clock
-            ))
-            .small()
-            .strong(),
-        ),
-    );
-
-    ui.push_id("gpu table", |ui| {
-        let table = TableBuilder::new(ui)
+        Grid::new("gpu_grid_upper")
+            .num_columns(2)
+            .spacing([2.0, 2.0])
             .striped(true)
-            .columns(Column::exact((SIZE.x * 0.5) - 9.5), 2);
+            .show(ui, |ui| {
+                ui.add(
+                    EdgyProgressBar::new(appdata.gpu.as_ref().unwrap().utilization as f32 / 100.0)
+                        .text(
+                            RichText::new(format!(
+                                "GPU: {:.1}%",
+                                appdata.gpu.as_ref().unwrap().utilization
+                            ))
+                            .small()
+                            .strong(),
+                        )
+                        .desired_width(SIZE.x / 2.0 - 5.0)
+                        .colored_dot(Some(auto_color(0))),
+                );
+                ui.add(
+                    EdgyProgressBar::new(appdata.gpu.as_ref().unwrap().temperature / 100.0)
+                        .text(
+                            RichText::new(format!(
+                                "{:.0} °C",
+                                appdata.gpu.as_ref().unwrap().temperature
+                            ))
+                            .small()
+                            .strong(),
+                        )
+                        .desired_width(SIZE.x / 2.0 - 5.0)
+                        .colored_dot(Some(auto_color(3))),
+                );
+            });
 
-        table.body(|mut body| {
-            body.row(12.0, |mut row| {
-                // Clock
-                row.col(|ui| {
-                    ui.label(
-                        RichText::new(format!(
-                            "{:.0} MHz",
-                            appdata.gpu.as_ref().unwrap().clock_mhz
-                        ))
-                        .small()
-                        .strong(),
-                    );
+        ui.add(
+            EdgyProgressBar::new(
+                appdata.gpu.as_ref().unwrap().memory_used
+                    / appdata.gpu.as_ref().unwrap().memory_total,
+            )
+            .text(
+                RichText::new(format!(
+                    "Mem: {} / {}",
+                    format_bytes(appdata.gpu.as_ref().unwrap().memory_used as f64),
+                    format_bytes(appdata.gpu.as_ref().unwrap().memory_total as f64)
+                ))
+                .small()
+                .strong(),
+            )
+            .colored_dot(Some(auto_color(1))),
+        );
+
+        ui.add(
+            EdgyProgressBar::new(
+                appdata.gpu.as_ref().unwrap().power_usage
+                    / appdata.gpu.as_ref().unwrap().power_limit,
+            )
+            .text(
+                RichText::new(format!(
+                    "Pow: {:.0}W / {:.0}W",
+                    appdata.gpu.as_ref().unwrap().power_usage,
+                    appdata.gpu.as_ref().unwrap().power_limit
+                ))
+                .small()
+                .strong(),
+            )
+            .colored_dot(Some(auto_color(2))),
+        );
+        ui.add(
+            EdgyProgressBar::new(
+                appdata.gpu.as_ref().unwrap().clock_mhz
+                    / appdata.gpu.as_ref().unwrap().max_clock.max(0.01),
+            )
+            .text(
+                RichText::new(format!(
+                    "Clk: {:.0}MHz / {:.0}MHz",
+                    appdata.gpu.as_ref().unwrap().clock_mhz,
+                    appdata.gpu.as_ref().unwrap().max_clock
+                ))
+                .small()
+                .strong(),
+            ),
+        );
+
+        ui.push_id("gpu table", |ui| {
+            let table = TableBuilder::new(ui)
+                .striped(true)
+                .columns(Column::exact((SIZE.x * 0.5) - 9.5), 2);
+
+            table.body(|mut body| {
+                body.row(12.0, |mut row| {
+                    // Clock
+                    row.col(|ui| {
+                        ui.label(
+                            RichText::new(format!(
+                                "{:.0} MHz",
+                                appdata.gpu.as_ref().unwrap().clock_mhz
+                            ))
+                            .small()
+                            .strong(),
+                        );
+                    });
                 });
             });
         });
-    });
 
-    let gpu_buf = appdata.gpu_buffer.read();
-    let gpu_line = Line::new(
-        (0..appdata.gpu_buffer.capacity())
-            .map(|i| [i as f64, { gpu_buf[i] }])
-            .collect::<PlotPoints>(),
-    );
+        let gpu_buf = appdata.gpu_buffer.read();
+        let gpu_line = Line::new(
+            (0..appdata.gpu_buffer.capacity())
+                .map(|i| [i as f64, { gpu_buf[i] }])
+                .collect::<PlotPoints>(),
+        );
 
-    let mem_buf = appdata.gpu_mem_buffer.read();
-    let mem_line = Line::new(
-        (0..appdata.gpu_mem_buffer.capacity())
-            .map(|i| [i as f64, { mem_buf[i] * 100.0 }])
-            .collect::<PlotPoints>(),
-    );
+        let mem_buf = appdata.gpu_mem_buffer.read();
+        let mem_line = Line::new(
+            (0..appdata.gpu_mem_buffer.capacity())
+                .map(|i| [i as f64, { mem_buf[i] * 100.0 }])
+                .collect::<PlotPoints>(),
+        );
 
-    let temp_buf = appdata.gpu_temp_buffer.read();
-    let temp_line = Line::new(
-        (0..appdata.gpu_temp_buffer.capacity())
-            .map(|i| [i as f64, { temp_buf[i] }])
-            .collect::<PlotPoints>(),
-    );
+        let temp_buf = appdata.gpu_temp_buffer.read();
+        let temp_line = Line::new(
+            (0..appdata.gpu_temp_buffer.capacity())
+                .map(|i| [i as f64, { temp_buf[i] }])
+                .collect::<PlotPoints>(),
+        );
 
-    let pow_buf = appdata.gpu_power_buffer.read();
-    let pow_line = Line::new(
-        (0..appdata.gpu_power_buffer.capacity())
-            .map(|i| [i as f64, { pow_buf[i] * 100.0 }])
-            .collect::<PlotPoints>(),
-    );
+        let pow_buf = appdata.gpu_power_buffer.read();
+        let pow_line = Line::new(
+            (0..appdata.gpu_power_buffer.capacity())
+                .map(|i| [i as f64, { pow_buf[i] * 100.0 }])
+                .collect::<PlotPoints>(),
+        );
 
-    add_graph(
-        "gpu",
-        ui,
-        vec![gpu_line, mem_line, pow_line, temp_line],
-        100.0,
-    );
+        add_graph(
+            "gpu",
+            ui,
+            vec![gpu_line, mem_line, pow_line, temp_line],
+            100.0,
+        );
 
-    ui.separator();
+        ui.separator();
+    }
 }
 
 #[derive(PartialEq, Eq)]

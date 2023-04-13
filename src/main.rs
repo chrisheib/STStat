@@ -80,6 +80,12 @@ fn main() -> Result<(), eframe::Error> {
     let thread_update_available = update_available.clone();
     thread::spawn(move || check_update_thread(thread_update_available));
 
+    let nvid_info = if let Ok(n) = Nvml::init() {
+        Some(n)
+    } else {
+        None
+    };
+
     let mut appstate = MyApp {
         system_status: System::new_all(),
         ping_buffer,
@@ -94,9 +100,9 @@ fn main() -> Result<(), eframe::Error> {
         cpu_maxtemp_buffer: CircleVec::new(),
         cpu_power_buffer: CircleVec::new(),
         ram_buffer: CircleVec::new(),
-        nvid_info: Nvml::init().unwrap(),
         ohw_info,
         rt,
+        nvid_info,
         gpu: None,
         timing: CircleVec::new(),
         current_frame_start: Instant::now(),
@@ -268,7 +274,7 @@ pub struct MyApp {
     pub windows_performance_query_handle: isize,
     pub disk_time_value_handle_map: Vec<(String, isize, f64)>,
     pub core_time_value_handle_map: Vec<(usize, isize, f64)>,
-    pub nvid_info: Nvml,
+    pub nvid_info: Option<Nvml>,
     pub ohw_info: Arc<Mutex<Option<OHWNode>>>,
     pub rt: Runtime,
     pub gpu: Option<GpuData>,
