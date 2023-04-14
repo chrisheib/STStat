@@ -18,13 +18,14 @@ use eframe::{
 };
 use ekko::{Ekko, EkkoResponse};
 use nvml_wrapper::Nvml;
+use ohw::OHWNode;
 use parking_lot::Mutex;
 use process::{Process, ProcessMetricHandles};
 use self_update::{backends::github::Update, cargo_crate_version};
 use settings::{show_settings, MySettings};
 use sidebar::dispose_sidebar;
 use sysinfo::{System, SystemExt};
-use system_info::{get_windows_glass_color, init_system, refresh, refresh_color, GpuData, OHWNode};
+use system_info::{get_windows_glass_color, init_system, refresh, refresh_color, GpuData};
 use tokio::{runtime::Runtime, time::sleep};
 use windows::Win32::System::Performance::{PdhCloseQuery, PdhOpenQueryA};
 
@@ -33,6 +34,7 @@ mod bytes_format;
 mod circlevec;
 mod color;
 mod components;
+mod ohw;
 mod process;
 mod settings;
 mod sidebar;
