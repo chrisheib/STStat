@@ -12,6 +12,7 @@ use std::{
 use crate::settings::get_screen_size;
 use chrono::{Duration, Local, NaiveDateTime};
 use circlevec::CircleVec;
+use display_info::DisplayInfo;
 use eframe::{
     egui::{self, Label, Layout, RichText, ScrollArea, Visuals},
     epaint::Color32,
@@ -123,16 +124,20 @@ fn main() -> Result<(), eframe::Error> {
         process_metric_handles: Default::default(),
         update_available,
     };
-    get_screen_size(&appstate);
+
+    get_screen_size(&appstate, None);
 
     let s = settings.lock();
+    let initial_window_pos = (s.current_settings.location.x, s.current_settings.location.y);
+    let scale = DisplayInfo::from_point(
+        s.current_settings.location.x as i32,
+        s.current_settings.location.y as i32,
+    )
+    .map(|d| d.scale_factor)
+    .unwrap_or(1.0);
     let initial_window_size = (
         s.current_settings.location.width as f32,
-        s.current_settings.location.height as f32,
-    );
-    let initial_window_pos = (
-        s.current_settings.location.x as f32,
-        s.current_settings.location.y as f32,
+        s.current_settings.location.height as f32 * scale + 48.0 * (scale - 1.0),
     );
     let use_plain_background = s.current_settings.use_plain_dark_background;
     drop(s);
@@ -309,7 +314,7 @@ impl eframe::App for MyApp {
         step_timing(self, CurrentStep::Begin);
         let now = Local::now().naive_local();
         if now > self.next_screen_update {
-            get_screen_size(self);
+            get_screen_size(self, frame.info().native_pixels_per_point);
             self.next_screen_update = now + Duration::seconds(20);
         }
         let mut update = false;
@@ -322,9 +327,14 @@ impl eframe::App for MyApp {
         }
 
         self.framecount += 1;
+        let scale_override = frame.info().native_pixels_per_point;
 
         let s = self.settings.lock();
-        let pos = (
+        let check_pos = (
+            s.current_settings.location.x as f32 / scale_override.unwrap_or(1.0),
+            s.current_settings.location.y as f32 / scale_override.unwrap_or(1.0),
+        );
+        let set_pos = (
             s.current_settings.location.x as f32,
             s.current_settings.location.y as f32,
         );
@@ -334,20 +344,21 @@ impl eframe::App for MyApp {
         );
         drop(s);
 
-        if frame.info().window_info.position != Some(pos.into()) {
+        if frame.info().window_info.position != Some(check_pos.into()) {
             println!(
-                "Position weicht ab, old: {:?}, new: {:?}",
+                "Position weicht ab, old: {:?}, new: {:?}, info: {:?}",
                 frame.info().window_info.position,
-                pos
+                check_pos,
+                frame.info()
             );
-            frame.set_window_pos(pos.into());
+            frame.set_window_pos(set_pos.into());
             frame.set_window_size(size.into())
         }
 
         if !self.firstupdate && self.framecount > 1 {
             println!("Setup sidebar");
             self.firstupdate = true;
-            sidebar::setup_sidebar(self);
+            sidebar::setup_sidebar(self, scale_override);
             let s = self.settings.lock();
             frame.set_window_pos(
                 (
@@ -403,7 +414,7 @@ impl eframe::App for MyApp {
                 system_info::set_system_info_components(self, ui);
                 ui.checkbox(&mut self.show_settings, "Show settings");
 
-                show_settings(self, ui);
+                show_settings(self, ui, scale_override);
             });
 
             let time_to_next_second = 1000 - chrono::Local::now().timestamp_subsec_millis();

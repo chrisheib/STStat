@@ -34,10 +34,10 @@ pub struct InnerSettings {
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Clone)]
 pub struct Location {
-    pub x: i32,
-    pub y: i32,
-    pub width: i32,
-    pub height: i32,
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
 }
 
 impl MySettings {
@@ -59,16 +59,16 @@ impl MySettings {
     }
 }
 
-pub fn show_settings(appdata: &mut MyApp, ui: &mut Ui) {
+pub fn show_settings(appdata: &mut MyApp, ui: &mut Ui, scale_override: Option<f32>) {
     let mut settings = appdata.settings.lock();
     if settings.current_settings != settings.loaded_settings {
         if settings.current_settings.display_right != settings.loaded_settings.display_right
             || settings.current_settings.screen_id != settings.loaded_settings.screen_id
         {
             drop(settings);
-            get_screen_size(appdata);
+            get_screen_size(appdata, scale_override);
             dispose_sidebar(appdata.settings.clone());
-            setup_sidebar(appdata);
+            setup_sidebar(appdata, scale_override);
             settings = appdata.settings.lock();
         }
         settings.save();
@@ -114,7 +114,7 @@ pub fn show_settings(appdata: &mut MyApp, ui: &mut Ui) {
     drop(settings);
 }
 
-pub fn get_screen_size(appdata: &MyApp) {
+pub fn get_screen_size(appdata: &MyApp, scale_override: Option<f32>) {
     let mut settings = appdata.settings.lock();
     // let workarea_height = dbg!(unsafe { GetSystemMetrics(SM_CYFULLSCREEN) });
 
@@ -122,17 +122,12 @@ pub fn get_screen_size(appdata: &MyApp) {
     // for display_info in &display_infos {
     //     println!("display_info {display_info:?}");
     // }
+    // panic!();
 
-    let maindisplay = display_infos
-        .iter()
-        .find(|m| m.is_primary)
-        .expect("Es sollte einen primären Monitor geben");
-
-    let mainscale = maindisplay.scale_factor;
     // let main_display_height = maindisplay.height;
     // let taskbarsize_main =
     //     (dbg!(main_display_height) as f32 - dbg!(workarea_height) as f32) / dbg!(mainscale);
-    let taskbarsize_main = 48.0 * mainscale;
+    let taskbarsize_main = 48.0;
     // println!("Taskbar_height: {taskbarsize_main}");
 
     let display_id = if settings.current_settings.screen_id < display_infos.len() {
@@ -142,17 +137,18 @@ pub fn get_screen_size(appdata: &MyApp) {
     };
 
     let target_display = display_infos[display_id];
-    let target_taskbar_size = taskbarsize_main * target_display.scale_factor;
+    let target_scale = scale_override.unwrap_or(target_display.scale_factor);
+    let target_taskbar_size = taskbarsize_main;
 
-    let width = (SIZE.x * target_display.scale_factor) as i32;
-    let height = target_display.height as i32 - target_taskbar_size as i32;
+    let width = SIZE.x;
+    let height = (target_display.height as f32 / target_scale) - target_taskbar_size;
 
     let x = if !settings.current_settings.display_right {
-        target_display.x
+        target_display.x as f32
     } else {
-        target_display.x + target_display.width as i32 - width
+        target_display.x as f32 + (target_display.width as f32) - width * target_scale
     };
-    let y = target_display.y;
+    let y = target_display.y as f32;
 
     settings.current_settings.location = Location {
         x,

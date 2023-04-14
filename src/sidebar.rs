@@ -55,7 +55,7 @@ lazy_static! {
 //     return_hwnd: Option<HWND>,
 // }
 
-pub(crate) fn setup_sidebar(appdata: &MyApp) {
+pub(crate) fn setup_sidebar(appdata: &MyApp, scale_override: Option<f32>) {
     // find handle: enum active windows, find window with my process id
     // let pid = std::process::id();
 
@@ -87,11 +87,13 @@ pub(crate) fn setup_sidebar(appdata: &MyApp) {
 
     let location = &settings.current_settings.location;
 
+    let scale = scale_override.unwrap_or(1.0);
+
     let rect = RECT {
-        left: location.x,
-        top: location.y,
-        right: location.x + location.width,
-        bottom: location.y + location.height,
+        left: location.x as i32,
+        top: location.y as i32,
+        right: location.x as i32 + (location.width * scale) as i32,
+        bottom: location.y as i32 + (location.height * scale) as i32,
     };
 
     let lparam = LPARAM(0);
@@ -142,9 +144,10 @@ pub fn dispose_sidebar(settings: Arc<Mutex<MySettings>>) {
     let hwnd = *STATIC_HWND.read().unwrap();
 
     let rect = RECT {
-        left: settings.current_settings.location.x,
+        left: settings.current_settings.location.x as i32,
         top: 0,
-        right: settings.current_settings.location.x + settings.current_settings.location.width,
+        right: settings.current_settings.location.x as i32
+            + settings.current_settings.location.width as i32,
         bottom: i32::MAX,
     };
 
