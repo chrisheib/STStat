@@ -3,6 +3,7 @@ use crate::{
     circlevec::CircleVec,
     color::{auto_color_dark, get_base_background},
     components::edgy_progress::EdgyProgressBar,
+    ohw::MyNode,
     process::{add_english_counter, get_pdh_process_data, init_process_metrics, Process},
     sidebar::STATIC_HWND,
     step_timing, CurrentStep, MyApp, SIZE,
@@ -18,7 +19,6 @@ use eframe::{
 use egui_extras::{Column, TableBuilder};
 use itertools::Itertools;
 use nvml_wrapper::enum_wrappers::device::Clock;
-use serde::Deserialize;
 use sysinfo::{CpuExt, CpuRefreshKind, DiskExt, NetworkExt, NetworksExt, SystemExt};
 use tokio::process::Command;
 use windows::{
@@ -182,109 +182,32 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
         timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
 
         let ohw = appdata.ohw_info.lock();
-        if let Some(ohw) = ohw.as_ref() {
-            let nodes = &ohw.Children[0]
-                .Children
-                .iter()
-                .find(|n| n.ImageURL == "images_icon/nvidia.png")
-                .unwrap()
-                .Children;
+        let n = ohw.select("#0|+images_icon/nvidia.png");
+        if let Some(n) = n {
             timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
 
-            temperature = nodes
-                .iter()
-                .find(|n| n.Text == "Temperatures")
-                .unwrap()
-                .Children[0]
-                .Value
-                .split_whitespace()
-                .next()
-                .unwrap()
-                .replace(',', ".")
-                .parse::<f32>()
-                .unwrap();
+            temperature = n.parse_value_path_def("Temperatures|#0");
             timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
 
-            power_usage = nodes.iter().find(|n| n.Text == "Powers").unwrap().Children[0]
-                .Value
-                .split_whitespace()
-                .next()
-                .unwrap()
-                .replace(',', ".")
-                .parse::<f32>()
-                .unwrap();
+            power_usage = n.parse_value_path_def("Powers|#0");
             timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
 
-            memory_free = nodes.iter().find(|n| n.Text == "Data").unwrap().Children[0]
-                .Value
-                .split_whitespace()
-                .next()
-                .unwrap()
-                .replace(',', ".")
-                .parse::<f32>()
-                .unwrap()
-                * 1024.0
-                * 1024.0;
+            memory_free = n.parse_value_path_def::<f32>("Data|#0") * 1024.0 * 1024.0;
             timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
 
-            memory_used = nodes.iter().find(|n| n.Text == "Data").unwrap().Children[1]
-                .Value
-                .split_whitespace()
-                .next()
-                .unwrap()
-                .replace(',', ".")
-                .parse::<f32>()
-                .unwrap()
-                * 1024.0
-                * 1024.0;
+            memory_used = n.parse_value_path_def::<f32>("Data|#1") * 1024.0 * 1024.0;
             timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
 
-            memory_total = nodes.iter().find(|n| n.Text == "Data").unwrap().Children[2]
-                .Value
-                .split_whitespace()
-                .next()
-                .unwrap()
-                .replace(',', ".")
-                .parse::<f32>()
-                .unwrap()
-                * 1024.0
-                * 1024.0;
+            memory_total = n.parse_value_path_def::<f32>("Data|#2") * 1024.0 * 1024.0;
             timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
 
-            fan_percentage = nodes
-                .iter()
-                .find(|n| n.Text == "Controls")
-                .map(|n| {
-                    n.Children[0]
-                        .Value
-                        .split_whitespace()
-                        .next()
-                        .unwrap_or_default()
-                        .replace(',', ".")
-                        .parse::<f32>()
-                        .unwrap_or_default()
-                })
-                .unwrap_or_default();
+            fan_percentage = n.parse_value_path_def("Controls|#0");
             timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
 
-            utilization = nodes.iter().find(|n| n.Text == "Load").unwrap().Children[0]
-                .Value
-                .split_whitespace()
-                .next()
-                .unwrap()
-                .replace(',', ".")
-                .parse::<f64>()
-                .unwrap();
+            utilization = n.parse_value_path_def("Load|#0");
             timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
 
-            clock_mhz = nodes.iter().find(|n| n.Text == "Clocks").unwrap().Children[0]
-                .Value
-                .split_whitespace()
-                .next()
-                .unwrap()
-                .replace(',', ".")
-                .parse::<f32>()
-                .unwrap();
+            clock_mhz = n.parse_value_path_def("Clocks|#0");
             timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
         };
         drop(ohw);
@@ -1061,48 +984,12 @@ fn refresh_system_memory(appdata: &mut MyApp) {
     let ohw = appdata.ohw_info.lock();
     let mut cur_ram = 0.0;
     let mut tot_ram = 0.0;
-    if let Some(ohw) = ohw.as_ref() {
-        let nodes = &ohw.Children[0]
-            .Children
-            .iter()
-            .find(|n| n.Text == "Generic Memory")
-            .unwrap()
-            .Children
-            .iter()
-            .find(|n| n.Text == "Data")
-            .unwrap()
-            .Children;
+    if ohw.is_some() {
+        let nodes = ohw.select("#0|Generic Memory|Data").cloned();
 
-        cur_ram = nodes
-            .iter()
-            .find(|n| n.Text == "Memory Used")
-            .unwrap()
-            .Value
-            .split_whitespace()
-            .next()
-            .unwrap()
-            .replace(',', ".")
-            .parse::<f32>()
-            .unwrap_or_default()
-            * 1024.0
-            * 1024.0
-            * 1024.0;
-
+        cur_ram = nodes.parse_value_path_def::<f32>("Memory Used") * 1024.0 * 1024.0 * 1024.0;
         tot_ram = cur_ram
-            + nodes
-                .iter()
-                .find(|n| n.Text == "Memory Available")
-                .unwrap()
-                .Value
-                .split_whitespace()
-                .next()
-                .unwrap()
-                .replace(',', ".")
-                .parse::<f32>()
-                .unwrap_or_default()
-                * 1024.0
-                * 1024.0
-                * 1024.0;
+            + nodes.parse_value_path_def::<f32>("Memory Available") * 1024.0 * 1024.0 * 1024.0;
     }
     appdata.cur_ram = cur_ram;
     if appdata.total_ram == 0.0 {
@@ -1164,29 +1051,35 @@ fn refresh_cpu(appdata: &mut MyApp) {
 
     appdata.cpu_maxtemp_buffer.add(max_temp.unwrap_or(0.0));
 
-    let cpu_power = if let Some(ohw) = ohw_opt.as_ref() {
-        ohw.Children[0]
-            .Children
-            .iter()
-            .find(|n| n.ImageURL == "images_icon/cpu.png")
-            .unwrap()
-            .Children
-            .iter()
-            .find(|n| n.Text == "Powers")
-            .unwrap()
-            .Children
-            .iter()
-            .find(|n| n.Text == "CPU Package")
-            .unwrap()
-            .Value
-            .replace('W', "")
-            .replace(',', ".")
-            .trim()
-            .parse::<f64>()
-            .unwrap_or_default()
-    } else {
-        0.0
-    };
+    let cpu_power = ohw_opt.parse_value_path_def("#0|+images_icon/cpu.png|Power|Package");
+
+    // let cpu_power = if let Some(ohw) = ohw_opt.as_ref() {
+    //     ohw.Children[0]
+    //         .Children
+    //         .iter()
+    //         .find(|n| n.ImageURL == "images_icon/cpu.png")
+    //         .and_then(|n| {
+    //             n.Children
+    //                 .iter()
+    //                 .find(|n| n.Text.contains("Power"))
+    //                 .and_then(|n| {
+    //                     n.Children
+    //                         .iter()
+    //                         .find(|n| n.Text.contains("Package"))
+    //                         .map(|n| {
+    //                             n.Value
+    //                                 .replace('W', "")
+    //                                 .replace(',', ".")
+    //                                 .trim()
+    //                                 .parse::<f64>()
+    //                                 .unwrap_or_default()
+    //                         })
+    //                 })
+    //         })
+    //         .unwrap_or_default()
+    // } else {
+    //     0.0
+    // };
 
     let mut s = appdata.settings.lock();
     if cpu_power > s.current_settings.max_cpu_power {
@@ -1194,17 +1087,4 @@ fn refresh_cpu(appdata: &mut MyApp) {
     }
     drop(s);
     appdata.cpu_power_buffer.add(cpu_power);
-}
-
-#[derive(Deserialize, Default, Debug, Clone)]
-#[allow(dead_code)]
-#[allow(non_snake_case)]
-pub struct OHWNode {
-    Children: Vec<OHWNode>,
-    ImageURL: String,
-    Max: String,
-    Min: String,
-    Text: String,
-    Value: String,
-    id: i64,
 }
