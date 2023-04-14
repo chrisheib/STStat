@@ -1,5 +1,3 @@
-- Options
-- Screen
-- doppelklick für task manager
 - funktion zum parsen der OHW-Values
-- add panic hook
+- include librehardware https://medium.com/@chyyran/calling-c-natively-from-rust-1f92c506289d
+- add autostart button https://github.com/j-hc/windows-taskscheduler-api-rust
