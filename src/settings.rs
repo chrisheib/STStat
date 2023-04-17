@@ -11,7 +11,7 @@ use sysinfo::SystemExt;
 
 use crate::{
     sidebar::{dispose_sidebar, setup_sidebar},
-    CurrentStep, MyApp, SIZE,
+    CurrentStep, MyApp, SIDEBAR_WIDTH,
 };
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Clone)]
@@ -140,7 +140,7 @@ pub fn get_screen_size(appdata: &MyApp, scale_override: Option<f32>) {
     let target_scale = scale_override.unwrap_or(target_display.scale_factor);
     let target_taskbar_size = taskbarsize_main;
 
-    let width = SIZE.x;
+    let width = SIDEBAR_WIDTH;
     let height = (target_display.height as f32 / target_scale) - target_taskbar_size;
 
     let x = if !settings.current_settings.display_right {

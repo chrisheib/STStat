@@ -60,6 +60,7 @@ impl MyNode for OHWNode {
                 .replace('W', "")
                 .replace("MB", "")
                 .replace("GB", "")
+                .replace('A', "")
                 .replace(',', ".");
             let v = v.trim();
 

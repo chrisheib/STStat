@@ -6,8 +6,9 @@ use crate::{
     ohw::MyNode,
     process::{add_english_counter, get_pdh_process_data, init_process_metrics, Process},
     sidebar::STATIC_HWND,
-    step_timing, CurrentStep, MyApp, SIZE,
+    step_timing, CurrentStep, MyApp, SIDEBAR_WIDTH,
 };
+use chrono::{Local, Timelike};
 use eframe::{
     egui::{
         plot::{Line, Plot, PlotPoints},
@@ -43,6 +44,7 @@ pub fn set_system_info_components(appdata: &mut MyApp, ui: &mut Ui) {
     show_network(appdata, ui);
     show_ping(appdata, ui);
     show_processes(appdata, ui);
+    show_battery(appdata, ui);
 }
 
 fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
@@ -52,7 +54,7 @@ fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
         ui.push_id(format!("network graph {interface_name}"), |ui| {
             let table = TableBuilder::new(ui)
                 .striped(true)
-                .columns(Column::exact((SIZE.x - 10.0) * 0.4), 2);
+                .columns(Column::exact((SIDEBAR_WIDTH - 10.0) * 0.4), 2);
             table.header(10.0, |mut header| {
                 header.col(|ui| {
                     ui.add(
@@ -99,7 +101,7 @@ fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
             "network",
             ui,
             vec![down_line, up_line],
-            14.0 * 1024.0 * 1024.0,
+            &[14.0 * 1024.0 * 1024.0],
         );
     }
     ui.separator();
@@ -252,7 +254,7 @@ fn show_processes(appdata: &mut MyApp, ui: &mut Ui) {
     let cpu_count = appdata.system_status.cpus().len();
     add_process_table(
         ui,
-        7,
+        5,
         &p,
         "Proc CPU",
         ProcessTableDisplayMode::Cpu,
@@ -265,7 +267,7 @@ fn show_processes(appdata: &mut MyApp, ui: &mut Ui) {
     p.sort_unstable_by(|a, b| b.memory.cmp(&a.memory));
     add_process_table(
         ui,
-        7,
+        5,
         &p,
         "Proc Ram",
         ProcessTableDisplayMode::Ram,
@@ -286,7 +288,34 @@ fn show_ping(appdata: &mut MyApp, ui: &mut Ui) {
     );
 
     ui.label(format!("M: {max_ping:.0}ms, C: {last_ping:.0} ms"));
-    add_graph("ping", ui, vec![line], 50.0);
+    add_graph("ping", ui, vec![line], &[50.0]);
+    step_timing(appdata, crate::CurrentStep::Ping);
+    ui.separator();
+}
+
+fn show_battery(appdata: &mut MyApp, ui: &mut Ui) {
+    if !appdata.battery_enabled {
+        return;
+    }
+    ui.vertical_centered(|ui| ui.label("Battery"));
+    let level = appdata.battery_level_buffer.read();
+    let level_line = Line::new(
+        (0..appdata.battery_level_buffer.capacity())
+            .map(|i| {
+                [i as f64, {
+                    (if level[i] == 0.0 { 100.0 } else { level[i] }) - 50.0
+                }]
+            })
+            .collect::<PlotPoints>(),
+    );
+    let charge = appdata.battery_change_buffer.read();
+    let charge_line = Line::new(
+        (0..appdata.battery_change_buffer.capacity())
+            .map(|i| [i as f64, { charge[i] * 25.0 }])
+            .collect::<PlotPoints>(),
+    );
+
+    add_graph("battery", ui, vec![level_line, charge_line], &[-50.0, 50.0]);
     step_timing(appdata, crate::CurrentStep::Ping);
     ui.separator();
 }
@@ -350,13 +379,13 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
                             .small()
                             .strong(),
                     )
-                    .desired_width(SIZE.x / 2.0 - 5.0)
+                    .desired_width(SIDEBAR_WIDTH / 2.0 - 5.0)
                     .fill(auto_color_dark(0)),
             );
             ui.add(
                 EdgyProgressBar::new(max_temp / 100.0)
                     .text(RichText::new(format!("{max_temp:.0} °C")).small().strong())
-                    .desired_width(SIZE.x / 2.0 - 5.0)
+                    .desired_width(SIDEBAR_WIDTH / 2.0 - 5.0)
                     .fill(auto_color_dark(3)),
             );
         });
@@ -399,7 +428,7 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
                     let usage = cpu.cpu_usage();
                     ui.add(
                         EdgyProgressBar::new(usage / 100.0)
-                            .desired_width(SIZE.x / 2.0 - 5.0)
+                            .desired_width(SIDEBAR_WIDTH / 2.0 - 5.0)
                             .text(
                                 RichText::new(format!("{usage:.0}% {temp:.0} °C"))
                                     .small()
@@ -441,7 +470,7 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
         "cpu",
         ui,
         vec![cpu_line, ram_line, power_line, temp_line],
-        100.5,
+        &[100.5],
     );
     step_timing(appdata, crate::CurrentStep::CPUGraph);
 
@@ -467,7 +496,7 @@ fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
                             .small()
                             .strong(),
                         )
-                        .desired_width(SIZE.x / 2.0 - 5.0)
+                        .desired_width(SIDEBAR_WIDTH / 2.0 - 5.0)
                         .fill(auto_color_dark(0)),
                 );
                 ui.add(
@@ -480,7 +509,7 @@ fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
                             .small()
                             .strong(),
                         )
-                        .desired_width(SIZE.x / 2.0 - 5.0)
+                        .desired_width(SIDEBAR_WIDTH / 2.0 - 5.0)
                         .fill(auto_color_dark(3)),
                 );
             });
@@ -566,7 +595,7 @@ fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
             "gpu",
             ui,
             vec![gpu_line, mem_line, pow_line, temp_line],
-            100.0,
+            &[100.0],
         );
 
         ui.separator();
@@ -591,7 +620,7 @@ fn add_process_table(
     let mut clicked = false;
     ui.push_id(name, |ui| {
         let mut table = TableBuilder::new(ui).striped(true).column(Column::exact(
-            (SIZE.x - 10.0)
+            (SIDEBAR_WIDTH - 10.0)
                 * if display_mode == ProcessTableDisplayMode::All {
                     0.4
                 } else {
@@ -601,12 +630,12 @@ fn add_process_table(
         if display_mode == ProcessTableDisplayMode::All
             || display_mode == ProcessTableDisplayMode::Ram
         {
-            table = table.column(Column::exact((SIZE.x - 10.0) * 0.3))
+            table = table.column(Column::exact((SIDEBAR_WIDTH - 10.0) * 0.3))
         };
         if display_mode == ProcessTableDisplayMode::All
             || display_mode == ProcessTableDisplayMode::Cpu
         {
-            table = table.column(Column::exact((SIZE.x - 10.0) * 0.3))
+            table = table.column(Column::exact((SIDEBAR_WIDTH - 10.0) * 0.3))
         };
         let table = table.header(10.0, |mut header| {
             header.col(|ui| {
@@ -729,8 +758,8 @@ fn add_process_table(
     }
 }
 
-fn add_graph(id: &str, ui: &mut Ui, line: Vec<Line>, max_y: f64) {
-    Plot::new(id)
+fn add_graph(id: &str, ui: &mut Ui, line: Vec<Line>, max_y: &[f64]) {
+    let mut p = Plot::new(id)
         .show_axes([true, true])
         .label_formatter(|_, _| "".to_string())
         .allow_drag(false)
@@ -742,16 +771,17 @@ fn add_graph(id: &str, ui: &mut Ui, line: Vec<Line>, max_y: f64) {
         .show_y(false)
         .x_axis_formatter(|_, _| String::new())
         .y_axis_formatter(|_, _| String::new())
-        .width(SIZE.x - 7.0)
+        .width(SIDEBAR_WIDTH - 7.0)
         .height(30.0)
-        .include_y(0.0)
-        .include_y(max_y)
-        .set_margin_fraction(Vec2::ZERO)
-        .show(ui, |plot_ui| {
-            for l in line {
-                plot_ui.line(l)
-            }
-        });
+        .include_y(0.0);
+    for y in max_y {
+        p = p.include_y(*y);
+    }
+    p.set_margin_fraction(Vec2::ZERO).show(ui, |plot_ui| {
+        for l in line {
+            plot_ui.line(l)
+        }
+    });
 }
 
 fn show_drives(appdata: &MyApp, ui: &mut Ui) {
@@ -787,7 +817,7 @@ fn show_drives(appdata: &MyApp, ui: &mut Ui) {
                             (d.total_space() - d.available_space()) as f32 / d.total_space() as f32,
                         )
                         .desired_width(
-                            appdata.settings.lock().current_settings.location.width as f32 * 0.55,
+                            appdata.settings.lock().current_settings.location.width * 0.55,
                         )
                         .text(
                             RichText::new(format!(
@@ -815,7 +845,7 @@ fn show_drives(appdata: &MyApp, ui: &mut Ui) {
         ));
     }
 
-    add_graph("disk", ui, lines, 100.5);
+    add_graph("disk", ui, lines, &[100.5]);
 
     ui.separator();
 }
@@ -941,6 +971,9 @@ pub fn refresh(appdata: &mut MyApp) {
 
     refresh_processes(appdata);
     step_timing(appdata, CurrentStep::UpdateSystemProcess);
+
+    refresh_battery(appdata);
+    step_timing(appdata, CurrentStep::UpdateBattery);
 }
 
 fn refresh_processes(appdata: &mut MyApp) {
@@ -1087,4 +1120,30 @@ fn refresh_cpu(appdata: &mut MyApp) {
     }
     drop(s);
     appdata.cpu_power_buffer.add(cpu_power);
+}
+
+pub fn refresh_battery(appdata: &mut MyApp) {
+    let level: f64 = appdata
+        .ohw_info
+        .lock()
+        .parse_value_path_def("#0|+images_icon/battery.png|levels|charge");
+
+    if level != 0.0 {
+        appdata.battery_enabled = true;
+        let ohw = appdata.ohw_info.lock();
+        let mut charge =
+            -ohw.parse_value_path_def::<f64>("#0|+images_icon/battery.png|currents|discharge");
+        if charge == -0.0 {
+            charge = ohw.parse_value_path_def("#0|+images_icon/battery.png|currents|charge");
+        }
+        drop(ohw);
+        appdata.battery_change_buffer.add(charge);
+
+        let now = Local::now().naive_local();
+        if now > appdata.battery_level_next_update {
+            appdata.battery_level_buffer.add(level);
+            appdata.battery_level_next_update =
+                now + chrono::Duration::seconds(60 - now.time().second() as i64);
+        }
+    }
 }
