@@ -1086,34 +1086,6 @@ fn refresh_cpu(appdata: &mut MyApp) {
 
     let cpu_power = ohw_opt.parse_value_path_def("#0|+images_icon/cpu.png|Power|Package");
 
-    // let cpu_power = if let Some(ohw) = ohw_opt.as_ref() {
-    //     ohw.Children[0]
-    //         .Children
-    //         .iter()
-    //         .find(|n| n.ImageURL == "images_icon/cpu.png")
-    //         .and_then(|n| {
-    //             n.Children
-    //                 .iter()
-    //                 .find(|n| n.Text.contains("Power"))
-    //                 .and_then(|n| {
-    //                     n.Children
-    //                         .iter()
-    //                         .find(|n| n.Text.contains("Package"))
-    //                         .map(|n| {
-    //                             n.Value
-    //                                 .replace('W', "")
-    //                                 .replace(',', ".")
-    //                                 .trim()
-    //                                 .parse::<f64>()
-    //                                 .unwrap_or_default()
-    //                         })
-    //                 })
-    //         })
-    //         .unwrap_or_default()
-    // } else {
-    //     0.0
-    // };
-
     let mut s = appdata.settings.lock();
     if cpu_power > s.current_settings.max_cpu_power {
         s.current_settings.max_cpu_power = cpu_power;
