@@ -44,12 +44,7 @@ mod system_info;
 // On read problems, run: lodctr /r
 pub const UPDATE_INTERVAL_MILLIS: i64 = 1000;
 pub const INTERNAL_WINDOW_TITLE: &str = "RS_Sidebar\0";
-
-// Right Screen, Right side
-pub const SIZE: egui::Vec2 = egui::Vec2 {
-    x: 130.0,
-    y: 1032.0,
-};
+pub const SIDEBAR_WIDTH: f32 = 130.0;
 
 fn main() -> Result<(), eframe::Error> {
     let mut pdh_query_handle: isize = -1;
@@ -123,6 +118,10 @@ fn main() -> Result<(), eframe::Error> {
         processes: vec![],
         process_metric_handles: Default::default(),
         update_available,
+        battery_change_buffer: CircleVec::new(),
+        battery_level_buffer: CircleVec::new(),
+        battery_enabled: false,
+        battery_level_next_update: Default::default(),
     };
 
     get_screen_size(&appstate, None);
@@ -136,8 +135,8 @@ fn main() -> Result<(), eframe::Error> {
     .map(|d| d.scale_factor)
     .unwrap_or(1.0);
     let initial_window_size = (
-        s.current_settings.location.width as f32,
-        s.current_settings.location.height as f32 * scale + 48.0 * (scale - 1.0),
+        s.current_settings.location.width,
+        s.current_settings.location.height * scale + 48.0 * (scale - 1.0),
     );
     let use_plain_background = s.current_settings.use_plain_dark_background;
     drop(s);
@@ -250,6 +249,7 @@ pub enum CurrentStep {
     UpdateSystemMemory,
     UpdateSystemNetwork,
     UpdateSystemProcess,
+    UpdateBattery,
     UpdateIoTime,
     Update,
     CpuCrunch,
@@ -302,6 +302,10 @@ pub struct MyApp {
     pub processes: Vec<Process>,
     pub process_metric_handles: ProcessMetricHandles,
     pub update_available: Arc<AtomicBool>,
+    pub battery_change_buffer: Arc<CircleVec<f64, 120>>,
+    pub battery_level_buffer: Arc<CircleVec<f64, 120>>,
+    pub battery_enabled: bool,
+    pub battery_level_next_update: NaiveDateTime,
 }
 
 impl eframe::App for MyApp {
@@ -331,16 +335,13 @@ impl eframe::App for MyApp {
 
         let s = self.settings.lock();
         let check_pos = (
-            s.current_settings.location.x as f32 / scale_override.unwrap_or(1.0),
-            s.current_settings.location.y as f32 / scale_override.unwrap_or(1.0),
+            s.current_settings.location.x / scale_override.unwrap_or(1.0),
+            s.current_settings.location.y / scale_override.unwrap_or(1.0),
         );
-        let set_pos = (
-            s.current_settings.location.x as f32,
-            s.current_settings.location.y as f32,
-        );
+        let set_pos = (s.current_settings.location.x, s.current_settings.location.y);
         let size = (
-            s.current_settings.location.width as f32,
-            s.current_settings.location.height as f32,
+            s.current_settings.location.width,
+            s.current_settings.location.height,
         );
         drop(s);
 
@@ -361,11 +362,7 @@ impl eframe::App for MyApp {
             sidebar::setup_sidebar(self, scale_override);
             let s = self.settings.lock();
             frame.set_window_pos(
-                (
-                    s.current_settings.location.x as f32,
-                    s.current_settings.location.y as f32,
-                )
-                    .into(),
+                (s.current_settings.location.x, s.current_settings.location.y).into(),
             );
             drop(s);
             println!("Setup sidebar done");
