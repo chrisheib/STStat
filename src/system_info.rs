@@ -97,11 +97,22 @@ fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
 
         ui.add_space(3.0);
 
+        let max_down = down
+            .iter()
+            .reduce(|acc, v| if acc > v { acc } else { v })
+            .copied()
+            .unwrap_or_default();
+        let max_up = up
+            .iter()
+            .reduce(|acc, v| if acc > v { acc } else { v })
+            .copied()
+            .unwrap_or_default();
+
         add_graph(
             "network",
             ui,
             vec![down_line, up_line],
-            &[14.0 * 1024.0 * 1024.0],
+            &[14.0 * 1024.0 * 1024.0, max_down, max_up],
         );
     }
     ui.separator();
@@ -288,7 +299,7 @@ fn show_ping(appdata: &mut MyApp, ui: &mut Ui) {
     );
 
     ui.label(format!("M: {max_ping:.0}ms, C: {last_ping:.0} ms"));
-    add_graph("ping", ui, vec![line], &[50.0]);
+    add_graph("ping", ui, vec![line], &[50.0, max_ping as f64]);
     step_timing(appdata, crate::CurrentStep::Ping);
     ui.separator();
 }
@@ -324,17 +335,9 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
     ui.vertical_centered(|ui| ui.label("CPU"));
 
     let ohw_opt = appdata.ohw_info.lock();
-    let coretemps = if let Some(ohw) = ohw_opt.as_ref() {
-        ohw.Children[0]
-            .Children
-            .iter()
-            .find(|n| n.ImageURL == "images_icon/cpu.png")
-            .unwrap()
-            .Children
-            .iter()
-            .find(|n| n.Text == "Temperatures")
-            .unwrap()
-            .Children
+    let temps_node = ohw_opt.select("#0|+images_icon/cpu.png|Temperatures");
+    let coretemps = if let Some(ohw) = temps_node {
+        ohw.Children
             .iter()
             .filter_map(|n| {
                 if let Ok(text) = n.Text.replace("CPU Core #", "").parse::<i32>() {
