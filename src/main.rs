@@ -178,7 +178,7 @@ fn main() -> Result<(), eframe::Error> {
 async fn ping_thread(thread_pb: Arc<CircleVec<u64, 100>>) -> ! {
     let ekko = Ekko::with_target([8, 8, 8, 8]).unwrap();
     loop {
-        if let EkkoResponse::Destination(res) = ekko.send(32).unwrap() {
+        if let Ok(EkkoResponse::Destination(res)) = ekko.send(32) {
             thread_pb.add(res.elapsed.as_millis() as u64);
         }
         sleep(
@@ -188,7 +188,7 @@ async fn ping_thread(thread_pb: Arc<CircleVec<u64, 100>>) -> ! {
                     .max(520),
             )
             .to_std()
-            .unwrap(),
+            .unwrap_or(std::time::Duration::from_secs(1)),
         )
         .await;
     }
