@@ -40,6 +40,7 @@ mod process;
 mod settings;
 mod sidebar;
 mod system_info;
+mod widgets;
 
 // On read problems, run: lodctr /r
 pub const UPDATE_INTERVAL_MILLIS: i64 = 1000;
