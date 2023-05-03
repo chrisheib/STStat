@@ -58,14 +58,18 @@ fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
             table.header(10.0, |mut header| {
                 header.col(|ui| {
                     ui.add(
-                        Label::new(RichText::new(format!("⬆ {}", format_bytes(data.tx))))
-                            .wrap(false),
+                        Label::new(
+                            RichText::new(format!("⬆ {}", format_bytes(data.tx))).size(12.0),
+                        )
+                        .wrap(false),
                     );
                 });
                 header.col(|ui| {
                     ui.add(
-                        Label::new(RichText::new(format!("⬇ {}", format_bytes(data.rx))))
-                            .wrap(false),
+                        Label::new(
+                            RichText::new(format!("⬇ {}", format_bytes(data.rx))).size(12.0),
+                        )
+                        .wrap(false),
                     );
                 });
             });
@@ -298,7 +302,13 @@ fn show_ping(appdata: &mut MyApp, ui: &mut Ui) {
             .collect::<PlotPoints>(),
     );
 
-    ui.label(format!("M: {max_ping:.0}ms, C: {last_ping:.0} ms"));
+    let lp_str = if last_ping == 0 {
+        "ERR".to_string()
+    } else {
+        format!("{last_ping:.0} ms")
+    };
+
+    ui.label(RichText::new(format!("M: {max_ping:.0}ms, C: {lp_str}")).size(12.0));
     add_graph("ping", ui, vec![line], &[50.0, max_ping as f64]);
     step_timing(appdata, crate::CurrentStep::Ping);
     ui.separator();

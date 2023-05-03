@@ -17,7 +17,7 @@ use eframe::{
     egui::{self, Label, Layout, RichText, ScrollArea, Visuals},
     epaint::Color32,
 };
-use ekko::{Ekko, EkkoResponse};
+use ekko::{Ekko, EkkoResponse, EkkoSettings};
 use nvml_wrapper::Nvml;
 use ohw::OHWNode;
 use parking_lot::Mutex;
@@ -178,9 +178,19 @@ fn main() -> Result<(), eframe::Error> {
 async fn ping_thread(thread_pb: Arc<CircleVec<u64, 100>>) -> ! {
     let ekko = Ekko::with_target([8, 8, 8, 8]).unwrap();
     loop {
-        if let Ok(EkkoResponse::Destination(res)) = ekko.send(32) {
-            thread_pb.add(res.elapsed.as_millis() as u64);
+        if let Ok(res) = ekko.send_with_settings(
+            32,
+            EkkoSettings {
+                timeout: std::time::Duration::from_millis(950),
+                ..Default::default()
+            },
+        ) {
+            match res {
+                EkkoResponse::Destination(res) => thread_pb.add(res.elapsed.as_millis() as u64),
+                _ => thread_pb.add(0),
+            }
         }
+
         sleep(
             Duration::milliseconds(
                 (1000 - Local::now().naive_local().timestamp_subsec_millis() as i64)
