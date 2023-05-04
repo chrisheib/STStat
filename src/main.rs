@@ -57,7 +57,6 @@ fn main() -> Result<(), eframe::Error> {
 
     let settings = Arc::new(Mutex::new(MySettings::load()));
     let cancel_settings = settings.clone();
-    let update_available = Arc::new(AtomicBool::new(false));
 
     ctrlc::set_handler(move || {
         println!("received Ctrl+C, removing sidebar");
@@ -75,6 +74,8 @@ fn main() -> Result<(), eframe::Error> {
 
     rt.spawn(ping_thread(thread_pb));
     rt.spawn(ohw_thread(thread_ohw));
+
+    let update_available = Arc::new(AtomicBool::new(false));
     let thread_update_available = update_available.clone();
     thread::spawn(move || check_update_thread(thread_update_available));
 
@@ -189,6 +190,8 @@ async fn ping_thread(thread_pb: Arc<CircleVec<u64, 100>>) -> ! {
                 EkkoResponse::Destination(res) => thread_pb.add(res.elapsed.as_millis() as u64),
                 _ => thread_pb.add(0),
             }
+        } else {
+            thread_pb.add(0)
         }
 
         sleep(
@@ -238,13 +241,14 @@ fn check_update_thread(update_available: Arc<AtomicBool>) -> ! {
             .build()
         {
             let cur_ver = status.current_version();
-            let new_ver = status.get_latest_release().unwrap_or_default();
-            update_available.store(
-                cur_ver != new_ver.version,
-                std::sync::atomic::Ordering::Relaxed,
-            );
+            if let Ok(new_ver) = status.get_latest_release() {
+                update_available.store(
+                    cur_ver != new_ver.version,
+                    std::sync::atomic::Ordering::Relaxed,
+                );
+            }
         }
-        thread::sleep(std::time::Duration::from_secs(60 * 60));
+        thread::sleep(std::time::Duration::from_secs(20 * 60));
     }
 }
 
