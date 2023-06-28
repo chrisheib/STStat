@@ -9,7 +9,7 @@ use std::{
     time::Instant,
 };
 
-use crate::settings::get_screen_size;
+use crate::{settings::get_screen_size, sidebar::setup_sidebar};
 use chrono::{Duration, Local, NaiveDateTime};
 use circlevec::CircleVec;
 use display_info::DisplayInfo;
@@ -333,7 +333,7 @@ impl eframe::App for MyApp {
         let now = Local::now().naive_local();
         if now > self.next_screen_update {
             get_screen_size(self, frame.info().native_pixels_per_point);
-            self.next_screen_update = now + Duration::seconds(20);
+            self.next_screen_update = now + Duration::seconds(5);
         }
         let mut update = false;
         if now > self.next_update {
@@ -359,17 +359,6 @@ impl eframe::App for MyApp {
         );
         drop(s);
 
-        if frame.info().window_info.position != Some(check_pos.into()) {
-            println!(
-                "Position weicht ab, old: {:?}, new: {:?}, info: {:?}",
-                frame.info().window_info.position,
-                check_pos,
-                frame.info()
-            );
-            frame.set_window_pos(set_pos.into());
-            frame.set_window_size(size.into())
-        }
-
         if !self.firstupdate && self.framecount > 1 {
             println!("Setup sidebar");
             self.firstupdate = true;
@@ -381,6 +370,21 @@ impl eframe::App for MyApp {
             drop(s);
             println!("Setup sidebar done");
         }
+
+        if self.firstupdate && dbg!(frame.info().window_info.position) != Some(check_pos.into()) {
+            println!(
+                "Position weicht ab, old: {:?}, new: {:?}, info: {:?}",
+                frame.info().window_info.position,
+                check_pos,
+                frame.info()
+            );
+            dispose_sidebar(self.settings.clone());
+            frame.set_window_pos(set_pos.into());
+            frame.set_window_size(size.into());
+            let scale_override = frame.info().native_pixels_per_point;
+            setup_sidebar(&self, scale_override);
+        }
+
         let use_plain_background = self
             .settings
             .lock()
