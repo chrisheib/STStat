@@ -15,6 +15,8 @@
     pkgs.openssl.dev
     pkgs.libpkgconf
     pkgs.pkg-config
+    pkgs.xorg.libxcb.dev
+    pkgs.wayland
   ];
 
   # https://devenv.sh/languages/

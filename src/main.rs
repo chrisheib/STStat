@@ -9,7 +9,9 @@ use std::{
     time::Instant,
 };
 
-use crate::{settings::get_screen_size, sidebar::setup_sidebar};
+use crate::{settings::get_screen_size, 
+    // sidebar::setup_sidebar
+};
 use chrono::{Duration, Local, NaiveDateTime};
 use circlevec::CircleVec;
 use display_info::DisplayInfo;
@@ -21,24 +23,24 @@ use ekko::{Ekko, EkkoResponse, EkkoSettings};
 use nvml_wrapper::Nvml;
 use ohw::OHWNode;
 use parking_lot::Mutex;
-use process::{Process, ProcessMetricHandles};
+// use process::{Process, ProcessMetricHandles};
 use self_update::{backends::github::Update, cargo_crate_version};
 use settings::{show_settings, MySettings};
-use sidebar::dispose_sidebar;
+// use sidebar::dispose_sidebar;
 use sysinfo::{System, SystemExt};
 use system_info::{get_windows_glass_color, init_system, refresh, refresh_color, GpuData};
 use tokio::{runtime::Runtime, time::sleep};
-use windows::Win32::System::Performance::{PdhCloseQuery, PdhOpenQueryA};
+// use windows::Win32::System::Performance::{PdhCloseQuery, PdhOpenQueryA};
 
-mod autostart;
+// mod autostart;
 mod bytes_format;
 mod circlevec;
 mod color;
 mod components;
 mod ohw;
-mod process;
+// mod process;
 mod settings;
-mod sidebar;
+// mod sidebar;
 mod system_info;
 
 // On read problems, run: lodctr /r
@@ -48,7 +50,7 @@ pub const SIDEBAR_WIDTH: f32 = 130.0;
 
 fn main() -> Result<(), eframe::Error> {
     let mut pdh_query_handle: isize = -1;
-    unsafe { PdhOpenQueryA(None, 0, &mut pdh_query_handle) };
+    // unsafe { PdhOpenQueryA(None, 0, &mut pdh_query_handle) };
 
     panic::set_hook(Box::new(|p| {
         println!("Custom panic hook: {p}");
@@ -60,8 +62,8 @@ fn main() -> Result<(), eframe::Error> {
 
     ctrlc::set_handler(move || {
         println!("received Ctrl+C, removing sidebar");
-        dispose_sidebar(cancel_settings.clone());
-        unsafe { PdhCloseQuery(pdh_query_handle) };
+        // dispose_sidebar(cancel_settings.clone());
+        // unsafe { PdhCloseQuery(pdh_query_handle) };
         std::process::exit(0);
     })
     .expect("Error setting Ctrl-C handler");
@@ -116,8 +118,8 @@ fn main() -> Result<(), eframe::Error> {
         show_settings: false,
         settings: settings.clone(),
         disk_buffer: Default::default(),
-        processes: vec![],
-        process_metric_handles: Default::default(),
+        // processes: vec![],
+        // process_metric_handles: Default::default(),
         update_available,
         battery_change_buffer: CircleVec::new(),
         battery_level_buffer: CircleVec::new(),
@@ -143,14 +145,14 @@ fn main() -> Result<(), eframe::Error> {
     drop(s);
 
     let options = eframe::NativeOptions {
-        // Hide the OS-specific "chrome" around the window:
-        decorated: false,
-        // To have rounded corners we need transparency:
-        transparent: true,
-        min_window_size: Some(egui::vec2(100.0, 100.0)),
-        initial_window_size: Some(initial_window_size.into()),
-        initial_window_pos: Some(initial_window_pos.into()),
-        drag_and_drop_support: false,
+        // // Hide the OS-specific "chrome" around the window:
+        // decorated: false,
+        // // To have rounded corners we need transparency:
+        // transparent: true,
+        // min_window_size: Some(egui::vec2(100.0, 100.0)),
+        // initial_window_size: Some(initial_window_size.into()),
+        // initial_window_pos: Some(initial_window_pos.into()),
+        // drag_and_drop_support: false,
         vsync: true,
         ..Default::default()
     };
@@ -165,13 +167,13 @@ fn main() -> Result<(), eframe::Error> {
             v.override_text_color = Some(Color32::from_gray(250));
             v.window_fill = get_windows_glass_color(use_plain_background);
             cc.egui_ctx.set_visuals(v);
-            Box::new(appstate)
+            Ok(Box::new(appstate))
         }),
     )?;
 
-    dispose_sidebar(settings.clone());
+    // dispose_sidebar(settings.clone());
 
-    unsafe { PdhCloseQuery(pdh_query_handle) };
+    // unsafe { PdhCloseQuery(pdh_query_handle) };
 
     Ok(())
 }
@@ -313,8 +315,8 @@ pub struct MyApp {
     pub show_settings: bool,
     pub settings: Arc<Mutex<MySettings>>,
     pub disk_buffer: HashMap<String, Arc<CircleVec<f64, 100>>>,
-    pub processes: Vec<Process>,
-    pub process_metric_handles: ProcessMetricHandles,
+    // pub processes: Vec<Process>,
+    // pub process_metric_handles: ProcessMetricHandles,
     pub update_available: Arc<AtomicBool>,
     pub battery_change_buffer: Arc<CircleVec<f64, 120>>,
     pub battery_level_buffer: Arc<CircleVec<f64, 120>>,
@@ -332,7 +334,7 @@ impl eframe::App for MyApp {
         step_timing(self, CurrentStep::Begin);
         let now = Local::now().naive_local();
         if now > self.next_screen_update {
-            get_screen_size(self, frame.info().native_pixels_per_point);
+            // get_screen_size(self, frame.info(). .native_pixels_per_point);
             self.next_screen_update = now + Duration::seconds(5);
         }
         let mut update = false;
@@ -345,13 +347,13 @@ impl eframe::App for MyApp {
         }
 
         self.framecount += 1;
-        let scale_override = frame.info().native_pixels_per_point;
+        // let scale_override = frame.info().native_pixels_per_point;
 
         let s = self.settings.lock();
-        let check_pos = (
-            s.current_settings.location.x / scale_override.unwrap_or(1.0),
-            s.current_settings.location.y / scale_override.unwrap_or(1.0),
-        );
+        // let check_pos = (
+        //     s.current_settings.location.x / scale_override.unwrap_or(1.0),
+        //     s.current_settings.location.y / scale_override.unwrap_or(1.0),
+        // );
         let set_pos = (s.current_settings.location.x, s.current_settings.location.y);
         let size = (
             s.current_settings.location.width,
@@ -362,28 +364,28 @@ impl eframe::App for MyApp {
         if !self.firstupdate && self.framecount > 1 {
             println!("Setup sidebar");
             self.firstupdate = true;
-            sidebar::setup_sidebar(self, scale_override);
+            // sidebar::setup_sidebar(self, scale_override);
             let s = self.settings.lock();
-            frame.set_window_pos(
-                (s.current_settings.location.x, s.current_settings.location.y).into(),
-            );
+            // frame.set_window_pos(
+            //     (s.current_settings.location.x, s.current_settings.location.y).into(),
+            // );
             drop(s);
             println!("Setup sidebar done");
         }
 
-        if self.firstupdate && dbg!(frame.info().window_info.position) != Some(check_pos.into()) {
-            println!(
-                "Position weicht ab, old: {:?}, new: {:?}, info: {:?}",
-                frame.info().window_info.position,
-                check_pos,
-                frame.info()
-            );
-            dispose_sidebar(self.settings.clone());
-            frame.set_window_pos(set_pos.into());
-            frame.set_window_size(size.into());
-            let scale_override = frame.info().native_pixels_per_point;
-            setup_sidebar(&self, scale_override);
-        }
+        // if self.firstupdate && dbg!(frame.info().window_info.position) != Some(check_pos.into()) {
+        //     println!(
+        //         "Position weicht ab, old: {:?}, new: {:?}, info: {:?}",
+        //         frame.info().window_info.position,
+        //         check_pos,
+        //         frame.info()
+        //     );
+        //     // dispose_sidebar(self.settings.clone());
+        //     frame.set_window_pos(set_pos.into());
+        //     frame.set_window_size(size.into());
+        //     let scale_override = frame.info().native_pixels_per_point;
+        //     // setup_sidebar(&self, scale_override);
+        // }
 
         let use_plain_background = self
             .settings
@@ -429,7 +431,7 @@ impl eframe::App for MyApp {
                 system_info::set_system_info_components(self, ui);
                 ui.checkbox(&mut self.show_settings, "Show settings");
 
-                show_settings(self, ui, scale_override);
+                // show_settings(self, ui, scale_override);
             });
 
             let time_to_next_second = 1000 - chrono::Local::now().timestamp_subsec_millis();
@@ -482,8 +484,11 @@ fn custom_window_frame(
             rect
         }
         .shrink(4.0);
-        let mut content_ui = ui.child_ui(content_rect, *ui.layout());
-        add_contents(&mut content_ui);
+        // let mut content_ui = ui.child_ui(content_rect, *ui.layout());
+        // let mut content_ui = ui.new_child(ui_builder)
+        // add_contents(&mut ui);
+        let b = UiBuilder::new().max_rect(content_rect);
+        ui.new_child(b);
     });
 }
 
@@ -544,7 +549,7 @@ fn close_maximize_minimize(ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         .add(Button::new(RichText::new("❌").size(button_height)))
         .on_hover_text("Close the window");
     if close_response.clicked() {
-        frame.close();
+        // frame.close();
     }
 
     // if frame.info().window_info.maximized {

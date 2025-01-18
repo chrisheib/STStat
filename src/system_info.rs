@@ -4,14 +4,14 @@ use crate::{
     color::{auto_color_dark, get_base_background},
     components::edgy_progress::EdgyProgressBar,
     ohw::MyNode,
-    process::{add_english_counter, get_pdh_process_data, init_process_metrics, Process},
-    sidebar::STATIC_HWND,
+    // process::{add_english_counter, get_pdh_process_data, init_process_metrics, Process},
+    // sidebar::STATIC_HWND,
     step_timing, CurrentStep, MyApp, SIDEBAR_WIDTH,
 };
 use chrono::{Local, Timelike};
 use eframe::{
     egui::{
-        plot::{Line, Plot, PlotPoints},
+        // plot::{Line, Plot, PlotPoints},
         Grid, Label, Layout, RichText, Sense, Ui,
     },
     emath::Align::{self, Max},
@@ -22,18 +22,18 @@ use itertools::Itertools;
 use nvml_wrapper::enum_wrappers::device::Clock;
 use sysinfo::{CpuExt, CpuRefreshKind, DiskExt, NetworkExt, NetworksExt, SystemExt};
 use tokio::process::Command;
-use windows::{
-    core::PWSTR,
-    w,
-    Win32::{
-        Foundation::BOOL,
-        Graphics::Dwm::DwmGetColorizationColor,
-        System::Performance::{
-            PdhBrowseCountersW, PdhCollectQueryData, PdhGetFormattedCounterValue,
-            PDH_BROWSE_DLG_CONFIG_W, PDH_FMT_DOUBLE, PERF_DETAIL_WIZARD,
-        },
-    },
-};
+// use windows::{
+//     core::PWSTR,
+//     w,
+//     Win32::{
+//         Foundation::BOOL,
+//         Graphics::Dwm::DwmGetColorizationColor,
+//         System::Performance::{
+//             PdhBrowseCountersW, PdhCollectQueryData, PdhGetFormattedCounterValue,
+//             PDH_BROWSE_DLG_CONFIG_W, PDH_FMT_DOUBLE, PERF_DETAIL_WIZARD,
+//         },
+//     },
+// };
 
 pub fn set_system_info_components(appdata: &mut MyApp, ui: &mut Ui) {
     step_timing(appdata, crate::CurrentStep::Begin);
@@ -51,29 +51,29 @@ fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
     ui.vertical_centered(|ui| ui.label("Networks"));
 
     for (interface_name, data) in filter_networks(appdata) {
-        ui.push_id(format!("network graph {interface_name}"), |ui| {
-            let table = TableBuilder::new(ui)
-                .striped(true)
-                .columns(Column::exact((SIDEBAR_WIDTH - 10.0) * 0.4), 2);
-            table.header(10.0, |mut header| {
-                header.col(|ui| {
-                    ui.add(
-                        Label::new(
-                            RichText::new(format!("⬆ {}", format_bytes(data.tx))).size(12.0),
-                        )
-                        .wrap(false),
-                    );
-                });
-                header.col(|ui| {
-                    ui.add(
-                        Label::new(
-                            RichText::new(format!("⬇ {}", format_bytes(data.rx))).size(12.0),
-                        )
-                        .wrap(false),
-                    );
-                });
-            });
-        });
+        // ui.push_id(format!("network graph {interface_name}"), |ui| {
+        //     let table = TableBuilder::new(ui)
+        //         .striped(true)
+        //         .columns(Column::exact((SIDEBAR_WIDTH - 10.0) * 0.4), 2);
+        //     table.header(10.0, |mut header| {
+        //         header.col(|ui| {
+        //             ui.add(
+        //                 Label::new(
+        //                     RichText::new(format!("⬆ {}", format_bytes(data.tx))).size(12.0),
+        //                 )
+        //                 .wrap(false),
+        //             );
+        //         });
+        //         header.col(|ui| {
+        //             ui.add(
+        //                 Label::new(
+        //                     RichText::new(format!("⬇ {}", format_bytes(data.rx))).size(12.0),
+        //                 )
+        //                 .wrap(false),
+        //             );
+        //         });
+        //     });
+        // });
 
         let up_buffer = appdata
             .net_up_buffer
@@ -81,11 +81,11 @@ fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
             .or_insert(CircleVec::new());
         let up = up_buffer.read();
 
-        let up_line = Line::new(
-            (0..up_buffer.capacity())
-                .map(|i| [i as f64, { up[i] }])
-                .collect::<PlotPoints>(),
-        );
+        // let up_line = Line::new(
+        //     (0..up_buffer.capacity())
+        //         .map(|i| [i as f64, { up[i] }])
+        //         .collect::<PlotPoints>(),
+        // );
 
         let down_buffer = appdata
             .net_down_buffer
@@ -93,11 +93,11 @@ fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
             .or_insert(CircleVec::new());
         let down = down_buffer.read();
 
-        let down_line = Line::new(
-            (0..down_buffer.capacity())
-                .map(|i| [i as f64, { down[i] }])
-                .collect::<PlotPoints>(),
-        );
+        // let down_line = Line::new(
+        //     (0..down_buffer.capacity())
+        //         .map(|i| [i as f64, { down[i] }])
+        //         .collect::<PlotPoints>(),
+        // );
 
         ui.add_space(3.0);
 
@@ -112,12 +112,12 @@ fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
             .copied()
             .unwrap_or_default();
 
-        add_graph(
-            "network",
-            ui,
-            vec![down_line, up_line],
-            &[14.0 * 1024.0 * 1024.0, max_down, max_up],
-        );
+        // add_graph(
+        //     "network",
+        //     ui,
+        //     vec![down_line, up_line],
+        //     &[14.0 * 1024.0 * 1024.0, max_down, max_up],
+        // );
     }
     ui.separator();
     step_timing(appdata, crate::CurrentStep::Network);
@@ -260,35 +260,37 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
     }
 }
 
+// FIX
+
 fn show_processes(appdata: &mut MyApp, ui: &mut Ui) {
     ui.vertical_centered(|ui| ui.label("Processes"));
     // By CPU
-    let mut p = appdata.processes.clone();
+    // let mut p = appdata.processes.clone();
 
-    p.sort_unstable_by(|a, b| b.cpu.total_cmp(&a.cpu));
-    let cpu_count = appdata.system_status.cpus().len();
-    add_process_table(
-        ui,
-        5,
-        &p,
-        "Proc CPU",
-        ProcessTableDisplayMode::Cpu,
-        cpu_count,
-    );
-    step_timing(appdata, crate::CurrentStep::ProcCPU);
+    // p.sort_unstable_by(|a, b| b.cpu.total_cmp(&a.cpu));
+    // let cpu_count = appdata.system_status.cpus().len();
+    // add_process_table(
+    //     ui,
+    //     5,
+    //     &p,
+    //     "Proc CPU",
+    //     ProcessTableDisplayMode::Cpu,
+    //     cpu_count,
+    // );
+    // step_timing(appdata, crate::CurrentStep::ProcCPU);
 
-    // By Memory
-    let mut p = appdata.processes.clone();
-    p.sort_unstable_by(|a, b| b.memory.cmp(&a.memory));
-    add_process_table(
-        ui,
-        5,
-        &p,
-        "Proc Ram",
-        ProcessTableDisplayMode::Ram,
-        cpu_count,
-    );
-    step_timing(appdata, crate::CurrentStep::ProcRAM);
+    // // By Memory
+    // // let mut p = appdata.processes.clone();
+    // p.sort_unstable_by(|a, b| b.memory.cmp(&a.memory));
+    // add_process_table(
+    //     ui,
+    //     5,
+    //     &p,
+    //     "Proc Ram",
+    //     ProcessTableDisplayMode::Ram,
+    //     cpu_count,
+    // );
+    // step_timing(appdata, crate::CurrentStep::ProcRAM);
 }
 
 fn show_ping(appdata: &mut MyApp, ui: &mut Ui) {
@@ -296,11 +298,11 @@ fn show_ping(appdata: &mut MyApp, ui: &mut Ui) {
     let pings = appdata.ping_buffer.read();
     let last_ping = pings.last().copied().unwrap_or_default();
     let max_ping = pings.iter().max().copied().unwrap_or_default();
-    let line = Line::new(
-        (0..appdata.ping_buffer.capacity())
-            .map(|i| [i as f64, { pings[i] as f64 }])
-            .collect::<PlotPoints>(),
-    );
+    // let line = Line::new(
+    //     (0..appdata.ping_buffer.capacity())
+    //         .map(|i| [i as f64, { pings[i] as f64 }])
+    //         .collect::<PlotPoints>(),
+    // );
 
     let lp_str = if last_ping == 0 {
         "ERR".to_string()
@@ -309,7 +311,7 @@ fn show_ping(appdata: &mut MyApp, ui: &mut Ui) {
     };
 
     ui.label(RichText::new(format!("M: {max_ping:.0}ms, C: {lp_str}")).size(12.0));
-    add_graph("ping", ui, vec![line], &[50.0, max_ping as f64]);
+    // add_graph("ping", ui, vec![line], &[50.0, max_ping as f64]);
     step_timing(appdata, crate::CurrentStep::Ping);
     ui.separator();
 }
@@ -320,23 +322,23 @@ fn show_battery(appdata: &mut MyApp, ui: &mut Ui) {
     }
     ui.vertical_centered(|ui| ui.label("Battery"));
     let level = appdata.battery_level_buffer.read();
-    let level_line = Line::new(
-        (0..appdata.battery_level_buffer.capacity())
-            .map(|i| {
-                [i as f64, {
-                    (if level[i] == 0.0 { 100.0 } else { level[i] }) - 50.0
-                }]
-            })
-            .collect::<PlotPoints>(),
-    );
-    let charge = appdata.battery_change_buffer.read();
-    let charge_line = Line::new(
-        (0..appdata.battery_change_buffer.capacity())
-            .map(|i| [i as f64, { charge[i] * 25.0 }])
-            .collect::<PlotPoints>(),
-    );
+    // let level_line = Line::new(
+    //     (0..appdata.battery_level_buffer.capacity())
+    //         .map(|i| {
+    //             [i as f64, {
+    //                 (if level[i] == 0.0 { 100.0 } else { level[i] }) - 50.0
+    //             }]
+    //         })
+    //         .collect::<PlotPoints>(),
+    // );
+    // let charge = appdata.battery_change_buffer.read();
+    // let charge_line = Line::new(
+    //     (0..appdata.battery_change_buffer.capacity())
+    //         .map(|i| [i as f64, { charge[i] * 25.0 }])
+    //         .collect::<PlotPoints>(),
+    // );
 
-    add_graph("battery", ui, vec![level_line, charge_line], &[-50.0, 50.0]);
+    // add_graph("battery", ui, vec![level_line, charge_line], &[-50.0, 50.0]);
     step_timing(appdata, crate::CurrentStep::Ping);
     ui.separator();
 }
@@ -453,38 +455,38 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
             }
         });
 
-    let cpu_line = Line::new(
-        (0..appdata.cpu_buffer.capacity())
-            .map(|i| [i as f64, { cpu[i] as f64 }])
-            .collect::<PlotPoints>(),
-    );
+    // let cpu_line = Line::new(
+    //     (0..appdata.cpu_buffer.capacity())
+    //         .map(|i| [i as f64, { cpu[i] as f64 }])
+    //         .collect::<PlotPoints>(),
+    // );
 
-    let ram = appdata.ram_buffer.read();
-    let ram_line = Line::new(
-        (0..appdata.ram_buffer.capacity())
-            .map(|i| [i as f64, { ram[i] as f64 * 100.0 }])
-            .collect::<PlotPoints>(),
-    );
+    // let ram = appdata.ram_buffer.read();
+    // let ram_line = Line::new(
+    //     (0..appdata.ram_buffer.capacity())
+    //         .map(|i| [i as f64, { ram[i] as f64 * 100.0 }])
+    //         .collect::<PlotPoints>(),
+    // );
 
-    let power_line = Line::new(
-        (0..appdata.cpu_power_buffer.capacity())
-            .map(|i| [i as f64, { (power[i] / max_power) * 100.0 }])
-            .collect::<PlotPoints>(),
-    );
+    // let power_line = Line::new(
+    //     (0..appdata.cpu_power_buffer.capacity())
+    //         .map(|i| [i as f64, { (power[i] / max_power) * 100.0 }])
+    //         .collect::<PlotPoints>(),
+    // );
 
-    let temp_line = Line::new(
-        (0..appdata.cpu_maxtemp_buffer.capacity())
-            .map(|i| [i as f64, { max_temp_line[i] as f64 }])
-            .collect::<PlotPoints>(),
-    );
+    // let temp_line = Line::new(
+    //     (0..appdata.cpu_maxtemp_buffer.capacity())
+    //         .map(|i| [i as f64, { max_temp_line[i] as f64 }])
+    //         .collect::<PlotPoints>(),
+    // );
 
-    step_timing(appdata, crate::CurrentStep::CPU);
-    add_graph(
-        "cpu",
-        ui,
-        vec![cpu_line, ram_line, power_line, temp_line],
-        &[100.5],
-    );
+    // step_timing(appdata, crate::CurrentStep::CPU);
+    // add_graph(
+    //     "cpu",
+    //     ui,
+    //     vec![cpu_line, ram_line, power_line, temp_line],
+    //     &[100.5],
+    // );
     step_timing(appdata, crate::CurrentStep::CPUGraph);
 
     ui.separator();
@@ -576,40 +578,40 @@ fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
             ),
         );
 
-        let gpu_buf = appdata.gpu_buffer.read();
-        let gpu_line = Line::new(
-            (0..appdata.gpu_buffer.capacity())
-                .map(|i| [i as f64, { gpu_buf[i] }])
-                .collect::<PlotPoints>(),
-        );
+        // let gpu_buf = appdata.gpu_buffer.read();
+        // let gpu_line = Line::new(
+        //     (0..appdata.gpu_buffer.capacity())
+        //         .map(|i| [i as f64, { gpu_buf[i] }])
+        //         .collect::<PlotPoints>(),
+        // );
 
-        let mem_buf = appdata.gpu_mem_buffer.read();
-        let mem_line = Line::new(
-            (0..appdata.gpu_mem_buffer.capacity())
-                .map(|i| [i as f64, { mem_buf[i] * 100.0 }])
-                .collect::<PlotPoints>(),
-        );
+        // let mem_buf = appdata.gpu_mem_buffer.read();
+        // let mem_line = Line::new(
+        //     (0..appdata.gpu_mem_buffer.capacity())
+        //         .map(|i| [i as f64, { mem_buf[i] * 100.0 }])
+        //         .collect::<PlotPoints>(),
+        // );
 
-        let temp_buf = appdata.gpu_temp_buffer.read();
-        let temp_line = Line::new(
-            (0..appdata.gpu_temp_buffer.capacity())
-                .map(|i| [i as f64, { temp_buf[i] }])
-                .collect::<PlotPoints>(),
-        );
+        // let temp_buf = appdata.gpu_temp_buffer.read();
+        // let temp_line = Line::new(
+        //     (0..appdata.gpu_temp_buffer.capacity())
+        //         .map(|i| [i as f64, { temp_buf[i] }])
+        //         .collect::<PlotPoints>(),
+        // );
 
-        let pow_buf = appdata.gpu_power_buffer.read();
-        let pow_line = Line::new(
-            (0..appdata.gpu_power_buffer.capacity())
-                .map(|i| [i as f64, { pow_buf[i] * 100.0 }])
-                .collect::<PlotPoints>(),
-        );
+        // let pow_buf = appdata.gpu_power_buffer.read();
+        // let pow_line = Line::new(
+        //     (0..appdata.gpu_power_buffer.capacity())
+        //         .map(|i| [i as f64, { pow_buf[i] * 100.0 }])
+        //         .collect::<PlotPoints>(),
+        // );
 
-        add_graph(
-            "gpu",
-            ui,
-            vec![gpu_line, mem_line, pow_line, temp_line],
-            &[100.0],
-        );
+        // add_graph(
+        //     "gpu",
+        //     ui,
+        //     vec![gpu_line, mem_line, pow_line, temp_line],
+        //     &[100.0],
+        // );
 
         ui.separator();
     }
@@ -622,6 +624,14 @@ enum ProcessTableDisplayMode {
     Ram,
 }
 
+// FIX
+struct Process {
+    name: String,
+    count: usize,
+    memory: usize,
+    cpu: usize,
+} 
+
 fn add_process_table(
     ui: &mut Ui,
     len: usize,
@@ -632,131 +642,131 @@ fn add_process_table(
 ) {
     let mut clicked = false;
     ui.push_id(name, |ui| {
-        let mut table = TableBuilder::new(ui).striped(true).column(Column::exact(
-            (SIDEBAR_WIDTH - 10.0)
-                * if display_mode == ProcessTableDisplayMode::All {
-                    0.4
-                } else {
-                    0.63
-                },
-        ));
-        if display_mode == ProcessTableDisplayMode::All
-            || display_mode == ProcessTableDisplayMode::Ram
-        {
-            table = table.column(Column::exact((SIDEBAR_WIDTH - 10.0) * 0.3))
-        };
-        if display_mode == ProcessTableDisplayMode::All
-            || display_mode == ProcessTableDisplayMode::Cpu
-        {
-            table = table.column(Column::exact((SIDEBAR_WIDTH - 10.0) * 0.3))
-        };
-        let table = table.header(10.0, |mut header| {
-            header.col(|ui| {
-                clicked = clicked
-                    || ui
-                        .add(Label::new(RichText::new(name).small()).wrap(false))
-                        .interact(Sense::click())
-                        .double_clicked();
-            });
-            if display_mode == ProcessTableDisplayMode::All
-                || display_mode == ProcessTableDisplayMode::Ram
-            {
-                header.col(|ui| {
-                    ui.with_layout(Layout::top_down_justified(Max), |ui| {
-                        clicked = clicked
-                            || ui
-                                .add(Label::new(RichText::new("RAM").small()).wrap(false))
-                                .interact(Sense::click())
-                                .double_clicked();
-                    });
-                });
-            }
-            if display_mode == ProcessTableDisplayMode::All
-                || display_mode == ProcessTableDisplayMode::Cpu
-            {
-                header.col(|ui| {
-                    ui.with_layout(Layout::top_down_justified(Max), |ui| {
-                        clicked = clicked
-                            || ui
-                                .add(Label::new(RichText::new("CPU").small()).wrap(false))
-                                .interact(Sense::click())
-                                .double_clicked();
-                    });
-                });
-            }
-        });
-        table.body(|body| {
-            body.rows(10.0, len, |row_index, mut row| {
-                if row_index < p.len() {
-                    let p = &p[row_index];
-                    row.col(|ui| {
-                        clicked = clicked
-                            || ui
-                                .add(
-                                    Label::new(
-                                        RichText::new(format!(
-                                            "{}{}",
-                                            p.name,
-                                            if p.count > 1 {
-                                                format!(" ×{}", p.count)
-                                            } else {
-                                                "".to_string()
-                                            }
-                                        ))
-                                        .small()
-                                        .strong(),
-                                    )
-                                    .wrap(false),
-                                )
-                                .interact(Sense::click())
-                                .double_clicked();
-                    });
-                    if display_mode == ProcessTableDisplayMode::All
-                        || display_mode == ProcessTableDisplayMode::Ram
-                    {
-                        row.col(|ui| {
-                            ui.with_layout(Layout::top_down_justified(Max), |ui| {
-                                clicked = clicked
-                                    || ui
-                                        .add(
-                                            Label::new(
-                                                RichText::new(format_bytes(p.memory as f64))
-                                                    .small()
-                                                    .strong(),
-                                            )
-                                            .wrap(false),
-                                        )
-                                        .interact(Sense::click())
-                                        .double_clicked()
-                            });
-                        });
-                    }
-                    if display_mode == ProcessTableDisplayMode::All
-                        || display_mode == ProcessTableDisplayMode::Cpu
-                    {
-                        row.col(|ui| {
-                            ui.with_layout(Layout::top_down_justified(Max), |ui| {
-                                clicked = clicked
-                                    || ui
-                                        .add(
-                                            Label::new(
-                                                RichText::new(format!(
-                                                    "{:.1}%",
-                                                    p.cpu as f32 / core_count as f32
-                                                ))
-                                                .small()
-                                                .strong(),
-                                            )
-                                            .wrap(false),
-                                        )
-                                        .interact(Sense::click())
-                                        .double_clicked();
-                            });
-                        });
-                    }
-                }
-            });
-        });
+        // let mut table = TableBuilder::new(ui).striped(true).column(Column::exact(
+        //     (SIDEBAR_WIDTH - 10.0)
+        //         * if display_mode == ProcessTableDisplayMode::All {
+        //             0.4
+        //         } else {
+        //             0.63
+        //         },
+        // ));
+        // if display_mode == ProcessTableDisplayMode::All
+        //     || display_mode == ProcessTableDisplayMode::Ram
+        // {
+        //     table = table.column(Column::exact((SIDEBAR_WIDTH - 10.0) * 0.3))
+        // };
+        // if display_mode == ProcessTableDisplayMode::All
+        //     || display_mode == ProcessTableDisplayMode::Cpu
+        // {
+        //     table = table.column(Column::exact((SIDEBAR_WIDTH - 10.0) * 0.3))
+        // };
+        // let table = table.header(10.0, |mut header| {
+        //     header.col(|ui| {
+        //         clicked = clicked
+        //             || ui
+        //                 .add(Label::new(RichText::new(name).small()).wrap(false))
+        //                 .interact(Sense::click())
+        //                 .double_clicked();
+        //     });
+        //     if display_mode == ProcessTableDisplayMode::All
+        //         || display_mode == ProcessTableDisplayMode::Ram
+        //     {
+        //         header.col(|ui| {
+        //             ui.with_layout(Layout::top_down_justified(Max), |ui| {
+        //                 clicked = clicked
+        //                     || ui
+        //                         .add(Label::new(RichText::new("RAM").small()).wrap(false))
+        //                         .interact(Sense::click())
+        //                         .double_clicked();
+        //             });
+        //         });
+        //     }
+        //     if display_mode == ProcessTableDisplayMode::All
+        //         || display_mode == ProcessTableDisplayMode::Cpu
+        //     {
+        //         header.col(|ui| {
+        //             ui.with_layout(Layout::top_down_justified(Max), |ui| {
+        //                 clicked = clicked
+        //                     || ui
+        //                         .add(Label::new(RichText::new("CPU").small()).wrap(false))
+        //                         .interact(Sense::click())
+        //                         .double_clicked();
+        //             });
+        //         });
+        //     }
+        // });
+        // table.body(|body| {
+        //     body.rows(10.0, len, |row_index, mut row| {
+        //         if row_index < p.len() {
+        //             let p = &p[row_index];
+        //             row.col(|ui| {
+        //                 clicked = clicked
+        //                     || ui
+        //                         .add(
+        //                             Label::new(
+        //                                 RichText::new(format!(
+        //                                     "{}{}",
+        //                                     p.name,
+        //                                     if p.count > 1 {
+        //                                         format!(" ×{}", p.count)
+        //                                     } else {
+        //                                         "".to_string()
+        //                                     }
+        //                                 ))
+        //                                 .small()
+        //                                 .strong(),
+        //                             )
+        //                             .wrap(false),
+        //                         )
+        //                         .interact(Sense::click())
+        //                         .double_clicked();
+        //             });
+        //             if display_mode == ProcessTableDisplayMode::All
+        //                 || display_mode == ProcessTableDisplayMode::Ram
+        //             {
+        //                 row.col(|ui| {
+        //                     ui.with_layout(Layout::top_down_justified(Max), |ui| {
+        //                         clicked = clicked
+        //                             || ui
+        //                                 .add(
+        //                                     Label::new(
+        //                                         RichText::new(format_bytes(p.memory as f64))
+        //                                             .small()
+        //                                             .strong(),
+        //                                     )
+        //                                     .wrap(false),
+        //                                 )
+        //                                 .interact(Sense::click())
+        //                                 .double_clicked()
+        //                     });
+        //                 });
+        //             }
+        //             if display_mode == ProcessTableDisplayMode::All
+        //                 || display_mode == ProcessTableDisplayMode::Cpu
+        //             {
+        //                 row.col(|ui| {
+        //                     ui.with_layout(Layout::top_down_justified(Max), |ui| {
+        //                         clicked = clicked
+        //                             || ui
+        //                                 .add(
+        //                                     Label::new(
+        //                                         RichText::new(format!(
+        //                                             "{:.1}%",
+        //                                             p.cpu as f32 / core_count as f32
+        //                                         ))
+        //                                         .small()
+        //                                         .strong(),
+        //                                     )
+        //                                     .wrap(false),
+        //                                 )
+        //                                 .interact(Sense::click())
+        //                                 .double_clicked();
+        //                     });
+        //                 });
+        //             }
+        //         }
+        //     });
+        // });
     });
     ui.separator();
 
@@ -771,31 +781,31 @@ fn add_process_table(
     }
 }
 
-fn add_graph(id: &str, ui: &mut Ui, line: Vec<Line>, max_y: &[f64]) {
-    let mut p = Plot::new(id)
-        .show_axes([true, true])
-        .label_formatter(|_, _| "".to_string())
-        .allow_drag(false)
-        .allow_zoom(false)
-        .allow_scroll(false)
-        .allow_boxed_zoom(false)
-        .allow_double_click_reset(false)
-        .show_x(false)
-        .show_y(false)
-        .x_axis_formatter(|_, _| String::new())
-        .y_axis_formatter(|_, _| String::new())
-        .width(SIDEBAR_WIDTH - 7.0)
-        .height(30.0)
-        .include_y(0.0);
-    for y in max_y {
-        p = p.include_y(*y);
-    }
-    p.set_margin_fraction(Vec2::ZERO).show(ui, |plot_ui| {
-        for l in line {
-            plot_ui.line(l)
-        }
-    });
-}
+// fn add_graph(id: &str, ui: &mut Ui, line: Vec<Line>, max_y: &[f64]) {
+//     // let mut p = Plot::new(id)
+//     //     .show_axes([true, true])
+//     //     .label_formatter(|_, _| "".to_string())
+//     //     .allow_drag(false)
+//     //     .allow_zoom(false)
+//     //     .allow_scroll(false)
+//     //     .allow_boxed_zoom(false)
+//     //     .allow_double_click_reset(false)
+//     //     .show_x(false)
+//     //     .show_y(false)
+//     //     .x_axis_formatter(|_, _| String::new())
+//     //     .y_axis_formatter(|_, _| String::new())
+//     //     .width(SIDEBAR_WIDTH - 7.0)
+//     //     .height(30.0)
+//     //     .include_y(0.0);
+//     // for y in max_y {
+//     //     p = p.include_y(*y);
+//     // }
+//     // p.set_margin_fraction(Vec2::ZERO).show(ui, |plot_ui| {
+//     //     for l in line {
+//     //         plot_ui.line(l)
+//     //     }
+//     // });
+// }
 
 fn show_drives(appdata: &MyApp, ui: &mut Ui) {
     ui.vertical_centered(|ui| ui.label("Drives"));
@@ -848,41 +858,42 @@ fn show_drives(appdata: &MyApp, ui: &mut Ui) {
         });
     ui.spacing();
 
-    let mut lines = Vec::new();
-    for (_d, diskbuffer) in appdata.disk_buffer.iter().sorted_by_key(|h| h.0) {
-        let values = diskbuffer.read();
-        lines.push(Line::new(
-            (0..diskbuffer.capacity())
-                .map(|i| [i as f64, { values[i] }])
-                .collect::<PlotPoints>(),
-        ));
-    }
+    // let mut lines = Vec::new();
+    // for (_d, diskbuffer) in appdata.disk_buffer.iter().sorted_by_key(|h| h.0) {
+    //     let values = diskbuffer.read();
+    //     lines.push(Line::new(
+    //         (0..diskbuffer.capacity())
+    //             .map(|i| [i as f64, { values[i] }])
+    //             .collect::<PlotPoints>(),
+    //     ));
+    // }
 
-    add_graph("disk", ui, lines, &[100.5]);
+    // add_graph("disk", ui, lines, &[100.5]);
 
     ui.separator();
 }
 
+// FIX
 fn refresh_disk_io_time(appdata: &mut MyApp) {
-    unsafe {
-        // Siehe: https://learn.microsoft.com/en-us/windows/win32/perfctrs/pdh-error-codes
-        for (d, handle, value) in &mut appdata.disk_time_value_handle_map {
-            let mut new_value = Default::default();
-            PdhGetFormattedCounterValue(*handle, PDH_FMT_DOUBLE, None, &mut new_value);
-            *value = new_value.Anonymous.doubleValue;
-            appdata
-                .disk_buffer
-                .entry(d.clone())
-                .or_insert(CircleVec::new())
-                .add(*value);
-        }
-    }
+    // unsafe {
+    //     // Siehe: https://learn.microsoft.com/en-us/windows/win32/perfctrs/pdh-error-codes
+    //     for (d, handle, value) in &mut appdata.disk_time_value_handle_map {
+    //         let mut new_value = Default::default();
+    //         PdhGetFormattedCounterValue(*handle, PDH_FMT_DOUBLE, None, &mut new_value);
+    //         *value = new_value.Anonymous.doubleValue;
+    //         appdata
+    //             .disk_buffer
+    //             .entry(d.clone())
+    //             .or_insert(CircleVec::new())
+    //             .add(*value);
+    //     }
+    // }
 }
 
 pub fn init_system(appdata: &mut MyApp) {
     // open_performance_browser();
 
-    appdata.process_metric_handles = init_process_metrics(appdata.windows_performance_query_handle);
+    // appdata.process_metric_handles = init_process_metrics(appdata.windows_performance_query_handle);
     appdata.system_status.refresh_disks_list();
     appdata.system_status.refresh_cpu();
 
@@ -894,17 +905,17 @@ pub fn init_system(appdata: &mut MyApp) {
         .sorted_by_key(|d| d.mount_point())
     {
         let drive_letter = d.mount_point().to_str().unwrap().replace('\\', "");
-        let metric_handle = add_english_counter(
-            format!(r"\LogicalDisk({drive_letter})\% Disk Time"),
-            appdata.windows_performance_query_handle,
-        );
+        // let metric_handle = add_english_counter(
+        //     format!(r"\LogicalDisk({drive_letter})\% Disk Time"),
+        //     appdata.windows_performance_query_handle,
+        // );
 
         appdata
             .disk_time_value_handle_map
-            .push((drive_letter, metric_handle, 0.0));
+            .push((drive_letter, 0, 0.0));
     }
 
-    unsafe { PdhCollectQueryData(appdata.windows_performance_query_handle) };
+    // unsafe { PdhCollectQueryData(appdata.windows_performance_query_handle) };
 }
 
 pub fn get_windows_glass_color(use_plain_blackground: bool) -> Color32 {
@@ -912,10 +923,10 @@ pub fn get_windows_glass_color(use_plain_blackground: bool) -> Color32 {
         return get_base_background();
     }
     let mut col: u32 = 0;
-    let mut opaque: BOOL = BOOL(0);
-    unsafe {
-        DwmGetColorizationColor(&mut col, &mut opaque).unwrap();
-    }
+    // let mut opaque: BOOL = BOOL(0);
+    // unsafe {
+    //     DwmGetColorizationColor(&mut col, &mut opaque).unwrap();
+    // }
     let bytes: [u8; 4] = col.to_be_bytes();
     Color32::from_rgba_premultiplied(
         darken(bytes[1]),
@@ -929,27 +940,28 @@ fn darken(v: u8) -> u8 {
     (v as f32 * 0.4) as u8
 }
 
+// FIX
 #[allow(dead_code)]
 pub fn open_performance_browser() {
     unsafe {
-        let hwnd = *STATIC_HWND.read().unwrap();
-        let mut buf: [u16; 10000] = [0; 10000];
-        let returnpathbuffer = PWSTR::from_raw(&mut buf as *mut u16);
-        let p = PWSTR::from_raw(w!("hello").as_ptr() as *mut _);
-        PdhBrowseCountersW(&PDH_BROWSE_DLG_CONFIG_W {
-            _bitfield: 0,
-            hWndOwner: hwnd,
-            szDataSource: PWSTR::null(),
-            szReturnPathBuffer: returnpathbuffer,
-            cchReturnPathLength: 10000,
-            pCallBack: None,
-            dwCallBackArg: 0,
-            CallBackStatus: 0,
-            dwDefaultDetailLevel: PERF_DETAIL_WIZARD,
-            szDialogBoxCaption: p,
-        } as *const PDH_BROWSE_DLG_CONFIG_W);
+        // let hwnd = *STATIC_HWND.read().unwrap();
+        // let mut buf: [u16; 10000] = [0; 10000];
+        // let returnpathbuffer = PWSTR::from_raw(&mut buf as *mut u16);
+        // let p = PWSTR::from_raw(w!("hello").as_ptr() as *mut _);
+        // PdhBrowseCountersW(&PDH_BROWSE_DLG_CONFIG_W {
+        //     _bitfield: 0,
+        //     hWndOwner: hwnd,
+        //     szDataSource: PWSTR::null(),
+        //     szReturnPathBuffer: returnpathbuffer,
+        //     cchReturnPathLength: 10000,
+        //     pCallBack: None,
+        //     dwCallBackArg: 0,
+        //     CallBackStatus: 0,
+        //     dwDefaultDetailLevel: PERF_DETAIL_WIZARD,
+        //     szDialogBoxCaption: p,
+        // } as *const PDH_BROWSE_DLG_CONFIG_W);
 
-        println!("{}", returnpathbuffer.display());
+        // println!("{}", returnpathbuffer.display());
     }
 }
 
@@ -962,7 +974,7 @@ pub fn open_performance_browser() {
 
 pub fn refresh(appdata: &mut MyApp) {
     // refresh windows perfcount stats once
-    unsafe { PdhCollectQueryData(appdata.windows_performance_query_handle) };
+    // unsafe { PdhCollectQueryData(appdata.windows_performance_query_handle) };
 
     refresh_cpu(appdata);
     step_timing(appdata, CurrentStep::UpdateCPU);
@@ -990,7 +1002,7 @@ pub fn refresh(appdata: &mut MyApp) {
 }
 
 fn refresh_processes(appdata: &mut MyApp) {
-    appdata.processes = get_pdh_process_data(&appdata.process_metric_handles);
+    // appdata.processes = get_pdh_process_data(&appdata.process_metric_handles);
 }
 
 pub fn refresh_color(appdata: &mut MyApp, ui: &mut Ui) {

@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use sysinfo::SystemExt;
 
 use crate::{
-    sidebar::{dispose_sidebar, setup_sidebar},
+    // sidebar::{dispose_sidebar, setup_sidebar},
     CurrentStep, MyApp, SIDEBAR_WIDTH,
 };
 
@@ -67,8 +67,8 @@ pub fn show_settings(appdata: &mut MyApp, ui: &mut Ui, scale_override: Option<f3
         {
             drop(settings);
             get_screen_size(appdata, scale_override);
-            dispose_sidebar(appdata.settings.clone());
-            setup_sidebar(appdata, scale_override);
+            // dispose_sidebar(appdata.settings.clone());
+            // setup_sidebar(appdata, scale_override);
             settings = appdata.settings.lock();
         }
         settings.save();
