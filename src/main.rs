@@ -49,13 +49,14 @@ pub const INTERNAL_WINDOW_TITLE: &str = "RS_Sidebar\0";
 pub const SIDEBAR_WIDTH: f32 = 130.0;
 
 fn main() -> Result<(), eframe::Error> {
+    color_eyre::install().unwrap();
     let mut pdh_query_handle: isize = -1;
     // unsafe { PdhOpenQueryA(None, 0, &mut pdh_query_handle) };
 
-    panic::set_hook(Box::new(|p| {
-        println!("Custom panic hook: {p}");
-        std::fs::write("error.txt", format!("{p}")).unwrap_or_default();
-    }));
+    // panic::set_hook(Box::new(|p| {
+    //     println!("Custom panic hook: {p}");
+    //     std::fs::write("error.txt", format!("{p}")).unwrap_or_default();
+    // }));
 
     let settings = Arc::new(Mutex::new(MySettings::load()));
     let cancel_settings = settings.clone();

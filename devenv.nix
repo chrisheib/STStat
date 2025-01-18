@@ -19,6 +19,35 @@
     pkgs.wayland
   ];
 
+  env.RUSTFLAGS = lib.mkForce "-C link-args=-Wl,-fuse-ld=mold,-rpath,${with pkgs;
+    lib.makeLibraryPath [
+      libGL
+      libxkbcommon
+      wayland
+      xorg.libX11
+      xorg.libXcursor
+      xorg.libXi
+      xorg.libXrandr
+    ]}";
+
+  env.RUST_BACKTRACE = "1";
+  # env.RUSTFLAGS = "-C link-args=-Wl,-fuse-ld=mold,-rpath,$(devenv makeLibraryPath pkgs.libGL)";
+
+  # -C link-arg=-fuse-ld=mold
+
+  # env.LD_LIBRARY_PATH = with pkgs;
+  #   lib.makeLibraryPath [
+  #     libGL
+  #     libxkbcommon
+  #     wayland
+  #     xorg.libX11
+  #     xorg.libXcursor
+  #     xorg.libXi
+  #     xorg.libXrandr
+  #   ];
+  # ...
+  # LD_LIBRARY_PATH = libPath;
+
   # https://devenv.sh/languages/
   languages.rust.enable = true;
 

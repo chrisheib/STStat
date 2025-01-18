@@ -1,2 +1,0 @@
-panicked at src/main.rs:182:48:
-called `Result::unwrap()` on an `Err` value: SocketCreateIcmpv4("Operation not permitted (os error 1)")
