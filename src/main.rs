@@ -9,14 +9,15 @@ use std::{
     time::Instant,
 };
 
-use crate::{settings::get_screen_size, 
+use crate::{
+    settings::get_screen_size,
     // sidebar::setup_sidebar
 };
 use chrono::{Duration, Local, NaiveDateTime};
 use circlevec::CircleVec;
 use display_info::DisplayInfo;
 use eframe::{
-    egui::{self, Label, Layout, RichText, ScrollArea, Visuals},
+    egui::{self, Label, Layout, RichText, ScrollArea, ViewportBuilder, Visuals},
     epaint::Color32,
 };
 use ekko::{Ekko, EkkoResponse, EkkoSettings};
@@ -27,7 +28,7 @@ use parking_lot::Mutex;
 use self_update::{backends::github::Update, cargo_crate_version};
 use settings::{show_settings, MySettings};
 // use sidebar::dispose_sidebar;
-use sysinfo::{System, SystemExt};
+use sysinfo::{Disks, Networks, System};
 use system_info::{get_windows_glass_color, init_system, refresh, refresh_color, GpuData};
 use tokio::{runtime::Runtime, time::sleep};
 // use windows::Win32::System::Performance::{PdhCloseQuery, PdhOpenQueryA};
@@ -45,7 +46,7 @@ mod system_info;
 
 // On read problems, run: lodctr /r
 pub const UPDATE_INTERVAL_MILLIS: i64 = 1000;
-pub const INTERNAL_WINDOW_TITLE: &str = "RS_Sidebar\0";
+pub const INTERNAL_WINDOW_TITLE: &str = "RS_Sidebar";
 pub const SIDEBAR_WIDTH: f32 = 130.0;
 
 fn main() -> Result<(), eframe::Error> {
@@ -75,8 +76,8 @@ fn main() -> Result<(), eframe::Error> {
     let ohw_info: Arc<Mutex<Option<OHWNode>>> = Default::default();
     let thread_ohw = ohw_info.clone();
 
-    rt.spawn(ping_thread(thread_pb));
-    rt.spawn(ohw_thread(thread_ohw));
+    // rt.spawn(ping_thread(thread_pb));
+    // rt.spawn(ohw_thread(thread_ohw));
 
     let update_available = Arc::new(AtomicBool::new(false));
     let thread_update_available = update_available.clone();
@@ -126,6 +127,8 @@ fn main() -> Result<(), eframe::Error> {
         battery_level_buffer: CircleVec::new(),
         battery_enabled: false,
         battery_level_next_update: Default::default(),
+        networks: Networks::new_with_refreshed_list(),
+        disks: Disks::new_with_refreshed_list(),
     };
 
     get_screen_size(&appstate, None);
@@ -143,9 +146,20 @@ fn main() -> Result<(), eframe::Error> {
         s.current_settings.location.height * scale + 48.0 * (scale - 1.0),
     );
     let use_plain_background = s.current_settings.use_plain_dark_background;
+    dbg!(&s);
+
+    let viewport = ViewportBuilder::default()
+        .with_decorations(false)
+        .with_position((s.current_settings.location.x, s.current_settings.location.y))
+        .with_inner_size((
+            s.current_settings.location.width,
+            s.current_settings.location.height,
+        ));
+
     drop(s);
 
     let options = eframe::NativeOptions {
+        viewport,
         // // Hide the OS-specific "chrome" around the window:
         // decorated: false,
         // // To have rounded corners we need transparency:
@@ -154,7 +168,7 @@ fn main() -> Result<(), eframe::Error> {
         // initial_window_size: Some(initial_window_size.into()),
         // initial_window_pos: Some(initial_window_pos.into()),
         // drag_and_drop_support: false,
-        vsync: true,
+        // vsync: true,
         ..Default::default()
     };
 
@@ -166,7 +180,8 @@ fn main() -> Result<(), eframe::Error> {
         Box::new(move |cc| {
             let mut v = Visuals::dark();
             v.override_text_color = Some(Color32::from_gray(250));
-            v.window_fill = get_windows_glass_color(use_plain_background);
+            // v.window_fill = get_windows_glass_color(use_plain_background);
+            v.window_fill = get_windows_glass_color(true);
             cc.egui_ctx.set_visuals(v);
             Ok(Box::new(appstate))
         }),
@@ -223,7 +238,11 @@ async fn ohw_thread(thread_ohw: Arc<Mutex<Option<OHWNode>>>) -> ! {
         };
         sleep(
             Duration::milliseconds(
-                (1000 - Local::now().naive_local().timestamp_subsec_millis() as i64)
+                (1000
+                    - Local::now()
+                        .naive_local()
+                        .and_utc()
+                        .timestamp_subsec_millis() as i64)
                     .min(999)
                     .max(520),
             )
@@ -323,6 +342,8 @@ pub struct MyApp {
     pub battery_level_buffer: Arc<CircleVec<f64, 120>>,
     pub battery_enabled: bool,
     pub battery_level_next_update: NaiveDateTime,
+    pub networks: Networks,
+    pub disks: Disks,
 }
 
 impl eframe::App for MyApp {
@@ -331,6 +352,7 @@ impl eframe::App for MyApp {
     }
 
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        println!("up");
         self.current_frame_start = Instant::now();
         step_timing(self, CurrentStep::Begin);
         let now = Local::now().naive_local();
@@ -388,11 +410,12 @@ impl eframe::App for MyApp {
         //     // setup_sidebar(&self, scale_override);
         // }
 
-        let use_plain_background = self
-            .settings
-            .lock()
-            .current_settings
-            .use_plain_dark_background;
+        // let use_plain_background = self
+        //     .settings
+        //     .lock()
+        //     .current_settings
+        //     .use_plain_dark_background;
+        let use_plain_background = true;
 
         custom_window_frame(use_plain_background, ctx, frame, "STStat", |ui| {
             if update {
@@ -429,6 +452,7 @@ impl eframe::App for MyApp {
             }
 
             ScrollArea::vertical().show(ui, |ui| {
+                println!("yo");
                 system_info::set_system_info_components(self, ui);
                 ui.checkbox(&mut self.show_settings, "Show settings");
 
@@ -485,8 +509,10 @@ fn custom_window_frame(
             rect
         }
         .shrink(4.0);
+        let uib = UiBuilder::default();
         // let mut content_ui = ui.child_ui(content_rect, *ui.layout());
-        // let mut content_ui = ui.new_child(ui_builder)
+        ui.scope_builder(uib, add_contents);
+        // let mut content_ui = ui.new_child(ui_builder);
         // add_contents(&mut ui);
         let b = UiBuilder::new().max_rect(content_rect);
         ui.new_child(b);
@@ -530,18 +556,28 @@ fn title_bar_ui(
     //     // frame.drag_window();
     // }
 
-    ui.allocate_ui_at_rect(title_bar_rect, |ui| {
+    let uib = UiBuilder::default().max_rect(title_bar_rect);
+
+    ui.allocate_new_ui(uib, |ui| {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
             ui.visuals_mut().button_frame = false;
             ui.add_space(8.0);
-            close_maximize_minimize(ui, frame);
+            close_maximize_minimize(ui);
         });
     });
+    // ui.allocate_ui_at_rect(title_bar_rect, |ui| {
+    //     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+    //         ui.spacing_mut().item_spacing.x = 0.0;
+    //         ui.visuals_mut().button_frame = false;
+    //         ui.add_space(8.0);
+    //         close_maximize_minimize(ui);
+    //     });
+    // });
 }
 
 /// Show some close/maximize/minimize buttons for the native window.
-fn close_maximize_minimize(ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+fn close_maximize_minimize(ui: &mut egui::Ui) {
     use egui::Button;
 
     let button_height = 12.0;
@@ -550,7 +586,7 @@ fn close_maximize_minimize(ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         .add(Button::new(RichText::new("❌").size(button_height)))
         .on_hover_text("Close the window");
     if close_response.clicked() {
-        // frame.close();
+        ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
     }
 
     // if frame.info().window_info.maximized {

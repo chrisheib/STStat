@@ -6,13 +6,21 @@ use crate::{
     ohw::MyNode,
     // process::{add_english_counter, get_pdh_process_data, init_process_metrics, Process},
     // sidebar::STATIC_HWND,
-    step_timing, CurrentStep, MyApp, SIDEBAR_WIDTH,
+    step_timing,
+    CurrentStep,
+    MyApp,
+    SIDEBAR_WIDTH,
 };
 use chrono::{Local, Timelike};
 use eframe::{
     egui::{
         // plot::{Line, Plot, PlotPoints},
-        Grid, Label, Layout, RichText, Sense, Ui,
+        Grid,
+        Label,
+        Layout,
+        RichText,
+        Sense,
+        Ui,
     },
     emath::Align::{self, Max},
     epaint::{Color32, Vec2},
@@ -20,7 +28,7 @@ use eframe::{
 use egui_extras::{Column, TableBuilder};
 use itertools::Itertools;
 use nvml_wrapper::enum_wrappers::device::Clock;
-use sysinfo::{CpuExt, CpuRefreshKind, DiskExt, NetworkExt, NetworksExt, SystemExt};
+use sysinfo::CpuRefreshKind;
 use tokio::process::Command;
 // use windows::{
 //     core::PWSTR,
@@ -125,8 +133,7 @@ fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
 
 fn filter_networks(appdata: &mut MyApp) -> Vec<(String, MyNetworkData)> {
     appdata
-        .system_status
-        .networks()
+        .networks
         .iter()
         .filter(|i| {
             *appdata
@@ -630,7 +637,7 @@ struct Process {
     count: usize,
     memory: usize,
     cpu: usize,
-} 
+}
 
 fn add_process_table(
     ui: &mut Ui,
@@ -815,8 +822,7 @@ fn show_drives(appdata: &MyApp, ui: &mut Ui) {
         .striped(true)
         .show(ui, |ui| {
             for (i, d) in appdata
-                .system_status
-                .disks()
+                .disks
                 .iter()
                 .sorted_by_key(|d| d.mount_point())
                 .enumerate()
@@ -894,16 +900,11 @@ pub fn init_system(appdata: &mut MyApp) {
     // open_performance_browser();
 
     // appdata.process_metric_handles = init_process_metrics(appdata.windows_performance_query_handle);
-    appdata.system_status.refresh_disks_list();
-    appdata.system_status.refresh_cpu();
+    appdata.disks.refresh(true);
+    appdata.system_status.refresh_cpu_all();
 
     // iterate over disks and add disk io time counters
-    for d in appdata
-        .system_status
-        .disks()
-        .iter()
-        .sorted_by_key(|d| d.mount_point())
-    {
+    for d in appdata.disks.iter().sorted_by_key(|d| d.mount_point()) {
         let drive_letter = d.mount_point().to_str().unwrap().replace('\\', "");
         // let metric_handle = add_english_counter(
         //     format!(r"\LogicalDisk({drive_letter})\% Disk Time"),
@@ -982,7 +983,7 @@ pub fn refresh(appdata: &mut MyApp) {
     refresh_gpu(appdata);
     step_timing(appdata, CurrentStep::UpdateGPU);
 
-    appdata.system_status.refresh_disks();
+    appdata.disks.refresh(true);
     step_timing(appdata, CurrentStep::UpdateSystemDisk);
 
     refresh_system_memory(appdata);
@@ -1023,7 +1024,7 @@ pub struct MyNetworkData {
 }
 
 fn refresh_networks(appdata: &mut MyApp) {
-    appdata.system_status.refresh_networks();
+    appdata.networks.refresh(true);
     for (name, data) in filter_networks(appdata) {
         let e = appdata
             .net_down_buffer
@@ -1059,10 +1060,10 @@ fn refresh_system_memory(appdata: &mut MyApp) {
 fn refresh_cpu(appdata: &mut MyApp) {
     appdata
         .system_status
-        .refresh_cpu_specifics(CpuRefreshKind::new().with_cpu_usage());
+        .refresh_cpu_specifics(CpuRefreshKind::nothing().with_cpu_usage());
     appdata
         .cpu_buffer
-        .add(appdata.system_status.global_cpu_info().cpu_usage());
+        .add(appdata.system_status.global_cpu_usage());
 
     let ohw_opt = appdata.ohw_info.lock();
     let coretemps = if let Some(ohw) = ohw_opt.as_ref() {

@@ -7,11 +7,12 @@ use std::{
 use display_info::DisplayInfo;
 use eframe::egui::{DragValue, Ui};
 use serde::{Deserialize, Serialize};
-use sysinfo::SystemExt;
 
 use crate::{
     // sidebar::{dispose_sidebar, setup_sidebar},
-    CurrentStep, MyApp, SIDEBAR_WIDTH,
+    CurrentStep,
+    MyApp,
+    SIDEBAR_WIDTH,
 };
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Clone)]
@@ -77,7 +78,7 @@ pub fn show_settings(appdata: &mut MyApp, ui: &mut Ui, scale_override: Option<f3
     if appdata.show_settings {
         ui.separator();
         ui.label("Show Networks:");
-        for (net, _) in appdata.system_status.networks() {
+        for (net, _) in &appdata.networks {
             let e = settings
                 .current_settings
                 .networks

@@ -141,14 +141,23 @@ impl Widget for EdgyProgressBar {
             if let Some(text_kind) = text {
                 if let Some(dc) = self.colored_dot {
                     let dot_text = WidgetText::RichText(RichText::new("⏺").size(8.0));
-                    let galley = dot_text.into_galley(ui, Some(TextWrapMode::Truncate), 8.0, TextStyle::Button);
+                    let galley = dot_text.into_galley(
+                        ui,
+                        Some(TextWrapMode::Truncate),
+                        8.0,
+                        TextStyle::Button,
+                    );
                     let text_pos = outer_rect.left_center() - Vec2::new(0.0, galley.size().y / 2.0)
                         + vec2(3.0, 0.0);
-                    // galley.paint_with_color_override(
-                    //     &ui.painter().with_clip_rect(outer_rect),
-                    //     text_pos,
-                    //     dc,
-                    // );
+
+                    ui.painter()
+                        .with_clip_rect(outer_rect)
+                        .galley_with_override_text_color(text_pos, galley, dc);
+                    //     galley.paint_with_color_override(
+                    //         &ui.painter().with_clip_rect(outer_rect),
+                    //         text_pos,
+                    //         dc,
+                    //     );
                 }
 
                 let text = match text_kind {
@@ -161,15 +170,22 @@ impl Widget for EdgyProgressBar {
                 };
 
                 let dot_space = if colored_dot.is_some() { 10.0 } else { 0.0 };
-                let galley = text.into_galley(ui, Some(TextWrapMode::Truncate), f32::INFINITY, TextStyle::Button);
+                let galley = text.into_galley(
+                    ui,
+                    Some(TextWrapMode::Truncate),
+                    f32::INFINITY,
+                    TextStyle::Button,
+                );
                 let text_pos = outer_rect.left_center() - Vec2::new(0.0, galley.size().y / 2.0)
                     + vec2(ui.spacing().item_spacing.x / 2.0, 0.0)
                     + vec2(dot_space, 0.0);
                 let text_color = visuals
                     .override_text_color
                     .unwrap_or(visuals.selection.stroke.color);
-                // galley.paint_with_fallback_color(
-                //     &ui.painter().with_clip_rect(outer_rect),
+                ui.painter()
+                    .with_clip_rect(outer_rect)
+                    .galley(text_pos, galley, text_color);
+                // galley.paint_with_color(
                 //     text_pos,
                 //     text_color,
                 // );
