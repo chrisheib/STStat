@@ -17,7 +17,7 @@ use chrono::{Duration, Local, NaiveDateTime};
 use circlevec::CircleVec;
 use display_info::DisplayInfo;
 use eframe::{
-    egui::{self, Label, Layout, RichText, ScrollArea, ViewportBuilder, Visuals},
+    egui::{self, Label, Layout, RichText, ScrollArea, Vec2, ViewportBuilder, Visuals},
     epaint::Color32,
 };
 use ekko::{Ekko, EkkoResponse, EkkoSettings};
@@ -26,11 +26,18 @@ use ohw::OHWNode;
 use parking_lot::Mutex;
 // use process::{Process, ProcessMetricHandles};
 use self_update::{backends::github::Update, cargo_crate_version};
+use serde::{Deserialize, Serialize};
 use settings::{show_settings, MySettings};
 // use sidebar::dispose_sidebar;
 use sysinfo::{Disks, Networks, System};
 use system_info::{get_windows_glass_color, init_system, refresh, refresh_color, GpuData};
 use tokio::{runtime::Runtime, time::sleep};
+use winit::{
+    application::ApplicationHandler,
+    event::WindowEvent,
+    event_loop::{ActiveEventLoop, EventLoop},
+    window::{Window, WindowId},
+};
 // use windows::Win32::System::Performance::{PdhCloseQuery, PdhOpenQueryA};
 
 // mod autostart;
@@ -51,7 +58,9 @@ pub const SIDEBAR_WIDTH: f32 = 130.0;
 
 fn main() -> Result<(), eframe::Error> {
     color_eyre::install().unwrap();
-    let mut pdh_query_handle: isize = -1;
+    // let mut pdh_query_handle: isize = -1;
+
+    get_screens_linux();
     // unsafe { PdhOpenQueryA(None, 0, &mut pdh_query_handle) };
 
     // panic::set_hook(Box::new(|p| {
@@ -96,7 +105,7 @@ fn main() -> Result<(), eframe::Error> {
         framecount: 0,
         next_update: Default::default(),
         next_screen_update: Default::default(),
-        windows_performance_query_handle: pdh_query_handle,
+        windows_performance_query_handle: 0,
         disk_time_value_handle_map: Default::default(),
         core_time_value_handle_map: Default::default(),
         cpu_buffer: CircleVec::new(),
@@ -346,6 +355,76 @@ pub struct MyApp {
     pub disks: Disks,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+struct MyMonitor {
+    id: usize,
+    name: String,
+    pos: (usize, usize),
+    size: (usize, usize),
+}
+
+/// This is a desperate hack to somehow get the monitor sizes of the system. This seems generally not possible in Linux.
+/// Therefore I need to create a new winit loop, which connects to wayland / x11 and can fetch the screen data that way.
+/// I can close out of the eventloop immediately after grabbing the info, but when trying to create a new event loop for
+/// the main app, winit crashes (Can't recreate event loop).
+/// Therefore the checking-winit needs to run in a separate process.
+fn get_screens_linux() -> Vec<MyMonitor> {
+    #[derive(Default)]
+    struct App {
+        window: Option<Window>,
+        screens: Option<Vec<MyMonitor>>,
+    }
+
+    impl ApplicationHandler for App {
+        fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+            self.window = Some(
+                event_loop
+                    .create_window(Window::default_attributes())
+                    .unwrap(),
+            );
+        }
+
+        fn window_event(
+            &mut self,
+            event_loop: &ActiveEventLoop,
+            _id: WindowId,
+            _event: WindowEvent,
+        ) {
+            // dbg!(&event);
+            // dbg!(event_loop);
+            let mut m = vec![];
+            for (id, screen) in event_loop.available_monitors().enumerate() {
+                // dbg!(screen.name());
+                // dbg!(screen.position());
+                // dbg!(screen.size());
+                let s = MyMonitor {
+                    id,
+                    name: screen.name().unwrap_or_default(),
+                    pos: (screen.position().x as usize, screen.position().y as usize),
+                    size: (screen.size().width as usize, screen.size().height as usize),
+                };
+                m.push(s);
+            }
+            self.screens = Some(m);
+            event_loop.exit();
+        }
+    }
+
+    procspawn::init();
+
+    let handle = procspawn::spawn((), |_| -> Vec<MyMonitor> {
+        let el = EventLoop::new().unwrap();
+        el.set_control_flow(winit::event_loop::ControlFlow::Wait);
+
+        let mut app = App::default();
+        el.run_app(&mut app).unwrap();
+        app.screens.unwrap()
+    });
+    let result = handle.join().unwrap();
+    dbg!(&result);
+    result
+}
+
 impl eframe::App for MyApp {
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
         egui::Rgba::TRANSPARENT.to_array() // Make sure we don't paint anything behind the rounded corners
@@ -353,6 +432,13 @@ impl eframe::App for MyApp {
 
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         println!("up");
+
+        // let screen_bounds =
+        // let initial_x = screen_bounds.left + 100.0; // Set initial x position
+        // let initial_y = screen_bounds.top + 100.0; // Set initial y position
+
+        // println!("{:?}", screen_bounds);
+
         self.current_frame_start = Instant::now();
         step_timing(self, CurrentStep::Begin);
         let now = Local::now().naive_local();

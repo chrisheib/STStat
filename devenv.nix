@@ -58,14 +58,22 @@
   # services.postgres.enable = true;
 
   # https://devenv.sh/scripts/
-  scripts.hello.exec = ''
-    echo hello from $GREET
-  '';
 
-  enterShell = ''
-    hello
-    git --version
-  '';
+  # scripts.nushell-greet = {
+  #   exec = ''
+  #     def greet [name] {
+  #       ["hello" $name]
+  #     }
+  #     greet "world"
+  #   '';
+  #   package = pkgs.nushell;
+  #   binary = "nu";
+  #   description = "Greet in Nu Shell";
+  # };
+
+  #enterShell = ''
+  #  nu
+  #'';
 
   # https://devenv.sh/tasks/
   # tasks = {

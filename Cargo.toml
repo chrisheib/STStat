@@ -21,12 +21,16 @@ itertools = "0.11.0"
 lazy_static = "1"
 nvml-wrapper = "0.9"
 parking_lot = "0.12"
+procspawn = { version = "1.0.1", default-features = false, features = [
+    "safe-shared-libraries",
+] }
 reqwest = { version = "0.11", features = ["blocking", "serde_json", "json"] }
 self_update = "0.37.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sysinfo = "0.33.1"
 tokio = { version = "1", features = ["rt-multi-thread", "process"] }
+winit = "0.30.8"
 # windows = { version = "0.48", features = [
 #     "Win32_UI_Shell",
 #     "Win32_Foundation",
