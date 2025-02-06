@@ -120,9 +120,9 @@ pub fn get_screen_size(appdata: &MyApp, scale_override: Option<f32>) {
     // let workarea_height = dbg!(unsafe { GetSystemMetrics(SM_CYFULLSCREEN) });
 
     let display_infos = DisplayInfo::all().unwrap();
-    // for display_info in &display_infos {
-    //     println!("display_info {display_info:?}");
-    // }
+    for display_info in &display_infos {
+        println!("display_info {display_info:?}");
+    }
     // panic!();
 
     // let main_display_height = maindisplay.height;
@@ -158,3 +158,65 @@ pub fn get_screen_size(appdata: &MyApp, scale_override: Option<f32>) {
         height,
     }
 }
+
+// /// This is a desperate hack to somehow get the monitor sizes of the system. This seems generally not possible in Linux.
+// /// Therefore I need to create a new winit loop, which connects to wayland / x11 and can fetch the screen data that way.
+// /// I can close out of the eventloop immediately after grabbing the info, but when trying to create a new event loop for
+// /// the main app, winit crashes (Can't recreate event loop).
+// /// Therefore the checking-winit needs to run in a separate process.
+// fn get_screens_linux() -> Vec<MyMonitor> {
+//     #[derive(Default)]
+//     struct App {
+//         window: Option<Window>,
+//         screens: Option<Vec<MyMonitor>>,
+//     }
+
+//     impl ApplicationHandler for App {
+//         fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+//             self.window = Some(
+//                 event_loop
+//                     .create_window(Window::default_attributes())
+//                     .unwrap(),
+//             );
+//         }
+
+//         fn window_event(
+//             &mut self,
+//             event_loop: &ActiveEventLoop,
+//             _id: WindowId,
+//             _event: WindowEvent,
+//         ) {
+//             // dbg!(&event);
+//             // dbg!(event_loop);
+//             let mut m = vec![];
+//             for (id, screen) in event_loop.available_monitors().enumerate() {
+//                 // dbg!(screen.name());
+//                 // dbg!(screen.position());
+//                 // dbg!(screen.size());
+//                 let s = MyMonitor {
+//                     id,
+//                     name: screen.name().unwrap_or_default(),
+//                     pos: (screen.position().x as usize, screen.position().y as usize),
+//                     size: (screen.size().width as usize, screen.size().height as usize),
+//                 };
+//                 m.push(s);
+//             }
+//             self.screens = Some(m);
+//             event_loop.exit();
+//         }
+//     }
+
+//     procspawn::init();
+
+//     let handle = procspawn::spawn((), |_| -> Vec<MyMonitor> {
+//         let el = EventLoop::new().unwrap();
+//         el.set_control_flow(winit::event_loop::ControlFlow::Wait);
+
+//         let mut app = App::default();
+//         el.run_app(&mut app).unwrap();
+//         app.screens.unwrap()
+//     });
+//     let result = handle.join().unwrap();
+//     dbg!(&result);
+//     result
+// }

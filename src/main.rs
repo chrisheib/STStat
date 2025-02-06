@@ -60,7 +60,7 @@ fn main() -> Result<(), eframe::Error> {
     color_eyre::install().unwrap();
     // let mut pdh_query_handle: isize = -1;
 
-    get_screens_linux();
+    // let monitors = get_screens_linux();
     // unsafe { PdhOpenQueryA(None, 0, &mut pdh_query_handle) };
 
     // panic::set_hook(Box::new(|p| {
@@ -138,32 +138,37 @@ fn main() -> Result<(), eframe::Error> {
         battery_level_next_update: Default::default(),
         networks: Networks::new_with_refreshed_list(),
         disks: Disks::new_with_refreshed_list(),
+        // monitors,
+        last_update_timestamp: Instant::now(),
+        last_joules: 0,
+        coretemps: vec![],
     };
 
     get_screen_size(&appstate, None);
 
     let s = settings.lock();
-    let initial_window_pos = (s.current_settings.location.x, s.current_settings.location.y);
-    let scale = DisplayInfo::from_point(
-        s.current_settings.location.x as i32,
-        s.current_settings.location.y as i32,
-    )
-    .map(|d| d.scale_factor)
-    .unwrap_or(1.0);
-    let initial_window_size = (
-        s.current_settings.location.width,
-        s.current_settings.location.height * scale + 48.0 * (scale - 1.0),
-    );
-    let use_plain_background = s.current_settings.use_plain_dark_background;
+    // let initial_window_pos = (s.current_settings.location.x, s.current_settings.location.y);
+    // let scale = DisplayInfo::from_point(
+    //     1000,
+    //     100, // s.current_settings.location.x as i32,
+    //         // s.current_settings.location.y as i32,
+    // )
+    // .map(|d| d.scale_factor)
+    // .unwrap_or(1.0);
+    let initial_window_size = (130.0, 800.0);
+    // let initial_window_size = (
+    //     s.current_settings.location.width,
+    //     s.current_settings.location.height * scale + 48.0 * (scale - 1.0),
+    // );
+    // let use_plain_background = s.current_settings.use_plain_dark_background;
     dbg!(&s);
 
     let viewport = ViewportBuilder::default()
-        .with_decorations(false)
-        .with_position((s.current_settings.location.x, s.current_settings.location.y))
-        .with_inner_size((
-            s.current_settings.location.width,
-            s.current_settings.location.height,
-        ));
+        // .with_decorations(false)
+        // .with_position(initial_window_pos)
+        .with_inner_size(initial_window_size)
+        .with_transparent(true)
+        .with_always_on_top();
 
     drop(s);
 
@@ -353,77 +358,18 @@ pub struct MyApp {
     pub battery_level_next_update: NaiveDateTime,
     pub networks: Networks,
     pub disks: Disks,
+    pub last_update_timestamp: Instant,
+    pub last_joules: u128, // pub monitors: Vec<MyMonitor>,
+    pub coretemps: Vec<(String, f32)>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-struct MyMonitor {
-    id: usize,
-    name: String,
-    pos: (usize, usize),
-    size: (usize, usize),
-}
-
-/// This is a desperate hack to somehow get the monitor sizes of the system. This seems generally not possible in Linux.
-/// Therefore I need to create a new winit loop, which connects to wayland / x11 and can fetch the screen data that way.
-/// I can close out of the eventloop immediately after grabbing the info, but when trying to create a new event loop for
-/// the main app, winit crashes (Can't recreate event loop).
-/// Therefore the checking-winit needs to run in a separate process.
-fn get_screens_linux() -> Vec<MyMonitor> {
-    #[derive(Default)]
-    struct App {
-        window: Option<Window>,
-        screens: Option<Vec<MyMonitor>>,
-    }
-
-    impl ApplicationHandler for App {
-        fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-            self.window = Some(
-                event_loop
-                    .create_window(Window::default_attributes())
-                    .unwrap(),
-            );
-        }
-
-        fn window_event(
-            &mut self,
-            event_loop: &ActiveEventLoop,
-            _id: WindowId,
-            _event: WindowEvent,
-        ) {
-            // dbg!(&event);
-            // dbg!(event_loop);
-            let mut m = vec![];
-            for (id, screen) in event_loop.available_monitors().enumerate() {
-                // dbg!(screen.name());
-                // dbg!(screen.position());
-                // dbg!(screen.size());
-                let s = MyMonitor {
-                    id,
-                    name: screen.name().unwrap_or_default(),
-                    pos: (screen.position().x as usize, screen.position().y as usize),
-                    size: (screen.size().width as usize, screen.size().height as usize),
-                };
-                m.push(s);
-            }
-            self.screens = Some(m);
-            event_loop.exit();
-        }
-    }
-
-    procspawn::init();
-
-    let handle = procspawn::spawn((), |_| -> Vec<MyMonitor> {
-        let el = EventLoop::new().unwrap();
-        el.set_control_flow(winit::event_loop::ControlFlow::Wait);
-
-        let mut app = App::default();
-        el.run_app(&mut app).unwrap();
-        app.screens.unwrap()
-    });
-    let result = handle.join().unwrap();
-    dbg!(&result);
-    result
-}
+// #[derive(Serialize, Deserialize, Debug)]
+// struct MyMonitor {
+//     pub id: usize,
+//     pub name: String,
+//     pub pos: (usize, usize),
+//     pub size: (usize, usize),
+// }
 
 impl eframe::App for MyApp {
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
@@ -432,12 +378,6 @@ impl eframe::App for MyApp {
 
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         println!("up");
-
-        // let screen_bounds =
-        // let initial_x = screen_bounds.left + 100.0; // Set initial x position
-        // let initial_y = screen_bounds.top + 100.0; // Set initial y position
-
-        // println!("{:?}", screen_bounds);
 
         self.current_frame_start = Instant::now();
         step_timing(self, CurrentStep::Begin);
@@ -463,26 +403,28 @@ impl eframe::App for MyApp {
         //     s.current_settings.location.x / scale_override.unwrap_or(1.0),
         //     s.current_settings.location.y / scale_override.unwrap_or(1.0),
         // );
-        let set_pos = (s.current_settings.location.x, s.current_settings.location.y);
-        let size = (
-            s.current_settings.location.width,
-            s.current_settings.location.height,
-        );
+        // let set_pos = (s.current_settings.location.x, s.current_settings.location.y);
+        // let set_pos = (200.0, 200.0);
+        // let size = (
+        //     s.current_settings.location.width,
+        //     s.current_settings.location.height,
+        // );
         drop(s);
 
+        // first run
         if !self.firstupdate && self.framecount > 1 {
             println!("Setup sidebar");
             self.firstupdate = true;
             // sidebar::setup_sidebar(self, scale_override);
             let s = self.settings.lock();
-            // frame.set_window_pos(
-            //     (s.current_settings.location.x, s.current_settings.location.y).into(),
-            // );
+            // ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(set_pos.into()));
+
             drop(s);
             println!("Setup sidebar done");
         }
+        dbg!(ctx.input(|i| i.screen_rect));
 
-        // if self.firstupdate && dbg!(frame.info().window_info.position) != Some(check_pos.into()) {
+        // if self.firstupdate && dbg!(ctx.input(|i| i.viewport().outer_rect)); // .info(). .window_info.position) != Some(check_pos.into()) {
         //     println!(
         //         "Position weicht ab, old: {:?}, new: {:?}, info: {:?}",
         //         frame.info().window_info.position,
@@ -513,7 +455,7 @@ impl eframe::App for MyApp {
                 ));
                 ui[1].with_layout(Layout::right_to_left(eframe::emath::Align::TOP), |ui| {
                     ui.add(Label::new(
-                        RichText::new(format!("v{}", cargo_crate_version!())).weak(),
+                        RichText::new(format!("Linux v{}", cargo_crate_version!())).weak(),
                     ));
                 });
             });

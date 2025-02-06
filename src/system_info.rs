@@ -1,3 +1,5 @@
+use std::{fs::read_to_string, time::Instant};
+
 use crate::{
     bytes_format::format_bytes,
     circlevec::CircleVec,
@@ -353,41 +355,14 @@ fn show_battery(appdata: &mut MyApp, ui: &mut Ui) {
 fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
     ui.vertical_centered(|ui| ui.label("CPU"));
 
-    let ohw_opt = appdata.ohw_info.lock();
-    let temps_node = ohw_opt.select("#0|+images_icon/cpu.png|Temperatures");
-    let coretemps = if let Some(ohw) = temps_node {
-        ohw.Children
-            .iter()
-            .filter_map(|n| {
-                if let Ok(text) = n.Text.replace("CPU Core #", "").parse::<i32>() {
-                    Some((
-                        text,
-                        n.Value
-                            .replace("°C", "")
-                            .replace(',', ".")
-                            .trim()
-                            .parse::<f32>()
-                            .unwrap_or_default(),
-                    ))
-                } else {
-                    None
-                }
-            })
-            .collect_vec()
-    } else {
-        vec![]
-    };
-
-    let max_temp_line = appdata.cpu_maxtemp_buffer.read();
-    let max_temp = max_temp_line.last().copied().unwrap_or_default();
-
-    drop(ohw_opt);
-
     step_timing(appdata, crate::CurrentStep::CpuCrunch);
     ui.spacing_mut().interact_size = [15.0, 12.0].into();
 
     let cpu = appdata.cpu_buffer.read();
     let last_cpu = cpu.last().copied().unwrap_or_default();
+
+    let maxtemp = appdata.cpu_maxtemp_buffer.read();
+    let last_maxtemp = maxtemp.last().copied().unwrap_or_default();
 
     Grid::new("cpu_grid_upper")
         .num_columns(2)
@@ -405,8 +380,12 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
                     .fill(auto_color_dark(0)),
             );
             ui.add(
-                EdgyProgressBar::new(max_temp / 100.0)
-                    .text(RichText::new(format!("{max_temp:.0} °C")).small().strong())
+                EdgyProgressBar::new(last_maxtemp / 100.0)
+                    .text(
+                        RichText::new(format!("{last_maxtemp:.0} °C"))
+                            .small()
+                            .strong(),
+                    )
                     .desired_width(SIDEBAR_WIDTH / 2.0 - 5.0)
                     .fill(auto_color_dark(3)),
             );
@@ -446,7 +425,7 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
         .show(ui, |ui| {
             for (i, cpu_chunk) in appdata.system_status.cpus().chunks(2).enumerate() {
                 for cpu in cpu_chunk {
-                    let temp = coretemps.get(i).map(|o| o.1).unwrap_or_default();
+                    let temp = appdata.coretemps.get(i).map(|o| o.1).unwrap_or_default();
                     let usage = cpu.cpu_usage();
                     ui.add(
                         EdgyProgressBar::new(usage / 100.0)
@@ -836,9 +815,16 @@ fn show_drives(appdata: &MyApp, ui: &mut Ui) {
                     .unwrap();
 
                 ui.add(Label::new(
-                    RichText::new(format!("{mount} {value:.1}%"))
-                        .small()
-                        .strong(),
+                    RichText::new(format!(
+                        "{} {value:.1}%",
+                        if mount.len() < 12 {
+                            mount.to_string()
+                        } else {
+                            "...".to_string() + &mount[mount.len() - 12..]
+                        }
+                    ))
+                    .small()
+                    .strong(),
                 ));
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     ui.add(
@@ -1040,16 +1026,11 @@ fn refresh_networks(appdata: &mut MyApp) {
 }
 
 fn refresh_system_memory(appdata: &mut MyApp) {
-    let ohw = appdata.ohw_info.lock();
-    let mut cur_ram = 0.0;
-    let mut tot_ram = 0.0;
-    if ohw.is_some() {
-        let nodes = ohw.select("#0|Generic Memory|Data").cloned();
+    appdata.system_status.refresh_memory();
 
-        cur_ram = nodes.parse_value_path_def::<f32>("Memory Used") * 1024.0 * 1024.0 * 1024.0;
-        tot_ram = cur_ram
-            + nodes.parse_value_path_def::<f32>("Memory Available") * 1024.0 * 1024.0 * 1024.0;
-    }
+    let cur_ram = appdata.system_status.used_memory() as f32;
+    let tot_ram = appdata.system_status.total_memory() as f32;
+
     appdata.cur_ram = cur_ram;
     if appdata.total_ram == 0.0 {
         appdata.total_ram = tot_ram;
@@ -1065,42 +1046,57 @@ fn refresh_cpu(appdata: &mut MyApp) {
         .cpu_buffer
         .add(appdata.system_status.global_cpu_usage());
 
-    let ohw_opt = appdata.ohw_info.lock();
-    let coretemps = if let Some(ohw) = ohw_opt.as_ref() {
-        ohw.Children[0]
-            .Children
-            .iter()
-            .find(|n| n.ImageURL == "images_icon/cpu.png")
+    // let ohw_opt = appdata.ohw_info.lock();
+    // let coretemps = if let Some(ohw) = ohw_opt.as_ref() {
+    //     ohw.Children[0]
+    //         .Children
+    //         .iter()
+    //         .find(|n| n.ImageURL == "images_icon/cpu.png")
+    //         .unwrap()
+    //         .Children
+    //         .iter()
+    //         .find(|n| n.Text == "Temperatures")
+    //         .unwrap()
+    //         .Children
+    //         .iter()
+    //         .filter_map(|n| {
+    //             if n.Text.contains("CPU Core #") {
+    //                 if let Ok(text) = n.Text.replace("CPU Core #", "").parse::<i32>() {
+    //                     Some((
+    //                         text,
+    //                         n.Value
+    //                             .replace("°C", "")
+    //                             .replace(',', ".")
+    //                             .trim()
+    //                             .parse::<f32>()
+    //                             .unwrap_or_default(),
+    //                     ))
+    //                 } else {
+    //                     None
+    //                 }
+    //             } else {
+    //                 None
+    //             }
+    //         })
+    //         .collect_vec()
+    // } else {
+    //     vec![]
+    // };
+
+    let cpu_temp = dbg!(
+        dbg!(&read_to_string("/sys/class/thermal/thermal_zone2/temp")
             .unwrap()
-            .Children
-            .iter()
-            .find(|n| n.Text == "Temperatures")
-            .unwrap()
-            .Children
-            .iter()
-            .filter_map(|n| {
-                if n.Text.contains("CPU Core #") {
-                    if let Ok(text) = n.Text.replace("CPU Core #", "").parse::<i32>() {
-                        Some((
-                            text,
-                            n.Value
-                                .replace("°C", "")
-                                .replace(',', ".")
-                                .trim()
-                                .parse::<f32>()
-                                .unwrap_or_default(),
-                        ))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            })
-            .collect_vec()
-    } else {
-        vec![]
-    };
+            .trim())
+        .parse::<f32>()
+        .unwrap()
+    ) / 1000.0;
+
+    let coretemps = appdata
+        .system_status
+        .cpus()
+        .iter()
+        .map(|c| (c.name().to_string(), cpu_temp))
+        .collect_vec();
 
     let max_temp = coretemps
         .iter()
@@ -1108,16 +1104,35 @@ fn refresh_cpu(appdata: &mut MyApp) {
         .max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap())
         .copied();
 
+    appdata.coretemps = coretemps;
+
     appdata.cpu_maxtemp_buffer.add(max_temp.unwrap_or(0.0));
 
-    let cpu_power = ohw_opt.parse_value_path_def("#0|+images_icon/cpu.png|Power|Package");
+    // let cpu_power = ohw_opt.parse_value_path_def("#0|+images_icon/cpu.png|Power|Package");
+    let current_power: u128 = dbg!(dbg!(&read_to_string(
+        "/sys/devices/virtual/powercap/intel-rapl/subsystem/intel-rapl:0/energy_uj"
+    )
+    .unwrap()
+    .trim())
+    .parse()
+    .unwrap());
 
-    let mut s = appdata.settings.lock();
-    if cpu_power > s.current_settings.max_cpu_power {
-        s.current_settings.max_cpu_power = cpu_power;
+    let timediff = dbg!(appdata.last_update_timestamp.elapsed().as_millis());
+    if timediff > 100 {
+        let pow = (current_power - appdata.last_joules) as f64 / 1_000_000.0;
+        let uj_per_ms = pow / (timediff as f64 / 1000.0); // uj per ms -> j per s -> W
+
+        let mut s = appdata.settings.lock();
+        if uj_per_ms < 1000.0 {
+            if uj_per_ms > s.current_settings.max_cpu_power {
+                s.current_settings.max_cpu_power = uj_per_ms;
+            }
+            appdata.cpu_power_buffer.add(uj_per_ms);
+        }
+        drop(s);
+        appdata.last_update_timestamp = Instant::now();
+        appdata.last_joules = current_power;
     }
-    drop(s);
-    appdata.cpu_power_buffer.add(cpu_power);
 }
 
 pub fn refresh_battery(appdata: &mut MyApp) {
