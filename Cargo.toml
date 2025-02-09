@@ -19,7 +19,7 @@ egui_extras = "0.30"
 ekko = "0.7"
 itertools = "0.11.0"
 lazy_static = "1"
-nvml-wrapper = "0.9"
+# nvml-wrapper = "0.10" not really working because of inconsistent linux libraries :/ need nvml_lib in the exact same version as the installed driver.
 parking_lot = "0.12"
 procspawn = { version = "1.0.1", default-features = false, features = [
     "safe-shared-libraries",

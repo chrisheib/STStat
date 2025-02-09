@@ -1,4 +1,4 @@
-use std::{fs::read_to_string, time::Instant};
+use std::{any::Any, fs::read_to_string, process::Stdio, time::Instant};
 
 use crate::{
     bytes_format::format_bytes,
@@ -29,7 +29,7 @@ use eframe::{
 };
 use egui_extras::{Column, TableBuilder};
 use itertools::Itertools;
-use nvml_wrapper::enum_wrappers::device::Clock;
+// use nvml_wrapper::enum_wrappers::device::{Clock, ClockId, TemperatureSensor};
 use sysinfo::CpuRefreshKind;
 use tokio::process::Command;
 // use windows::{
@@ -161,7 +161,7 @@ fn filter_networks(appdata: &mut MyApp) -> Vec<(String, MyNetworkData)> {
 #[derive(Default, Debug, Clone)]
 #[allow(dead_code)]
 pub struct GpuData {
-    utilization: f64,
+    utilization: f32,
     temperature: f32,
     memory_free: f32,
     memory_used: f32,
@@ -182,91 +182,264 @@ fn timing_to_str(timestamp: std::time::Instant, text: &mut String, perf_trace: b
 pub fn refresh_gpu(appdata: &mut MyApp) {
     let perf_trace = appdata.settings.lock().current_settings.track_timings;
     step_timing(appdata, CurrentStep::UpdateGPU);
-    if let Some(gpu) = appdata.nvid_info.as_ref() {
-        let mut text = String::new();
-        timing_to_str(appdata.current_frame_start, &mut text, perf_trace); // , 96
 
-        let mut utilization = 0.0;
-        let mut temperature = 0.0;
-        let mut fan_percentage = 0.0;
-        let mut power_usage = 0.0;
-        let mut memory_free = 0.0;
-        let mut memory_used = 0.0;
-        let mut memory_total = 0.0;
-        let mut clock_mhz = 0.0;
+    // Get the first `Device` (GPU) in the system
+    // let device = appdata.nvml_device.device_by_index(0).unwrap();
 
-        let power_limit;
-        let max_clock;
-        if let Some(gpu) = &appdata.gpu {
-            power_limit = gpu.power_limit;
-            max_clock = gpu.max_clock;
-        } else {
-            let gpu = gpu.device_by_index(0).unwrap();
-            power_limit = gpu.enforced_power_limit().unwrap() as f32 / 1000.0;
-            max_clock = gpu.max_clock_info(Clock::Graphics).unwrap_or_default() as f32;
-        }
-        timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+    // let mut utilization = device.utilization_rates().unwrap().gpu;
+    // let mut temperature = device.temperature(TemperatureSensor::Gpu).unwrap();
+    // let mut fan_percentage = device.fan_speed(0).unwrap();
+    // let mut memory_free = device.memory_info().unwrap().free;
+    // let mut memory_used = device.memory_info().unwrap().used;
+    // let mut memory_total = device.memory_info().unwrap().total;
+    // let mut clock_mhz = device.clock(Clock::Graphics, ClockId::Current).unwrap();
+    // let mut power_usage = device.power_usage().unwrap();
+    // let mut power_limit = device.power_management_limit().unwrap();
 
-        let ohw = appdata.ohw_info.lock();
-        let n = ohw.select("#0|+images_icon/nvidia.png");
-        if let Some(n) = n {
-            timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+    // let output = std::process::Command::new("nvidia-smi")
+    //     .arg("-q")
+    //     .arg("-d")
+    //     .arg("TEMPERATURE,POWER,MEMORY,UTILIZATION,CLOCKS,FAN_SPEED")
+    //     // Tell the OS to record the command's output
+    //     .stdout(Stdio::piped())
+    //     // execute the command, wait for it to complete, then capture the output
+    //     .output()
+    //     // Blow up if the OS was unable to start the program
+    //     .unwrap();
 
-            temperature = n.parse_value_path_def("Temperatures|#0");
-            timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+    // // extract the raw bytes that we captured and interpret them as a string
+    // let stdout = dbg!(String::from_utf8(output.stdout).unwrap());
+    // let mut lines = stdout.lines();
 
-            power_usage = n.parse_value_path_def("Powers|#0");
-            timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+    // nvidia-smi --query-gpu=temperature.gpu,power.draw,memory.total,memory.used,memory.free,utilization.gpu,clocks.current.graphics,clocks.current.sm,clocks.current.memory,fan.speed \
+    //     --format=csv,noheader
+    // 57, 41.71 W, 12288 MiB, 1532 MiB, 10403 MiB, 22 %, 870 MHz, 870 MHz, 810 MHz, 0 %
 
-            memory_free = n.parse_value_path_def::<f32>("Data|#0") * 1024.0 * 1024.0;
-            timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+    let output = std::process::Command::new("nvidia-smi")
+        .arg("--query-gpu=temperature.gpu,power.draw,memory.total,memory.used,memory.free,utilization.gpu,clocks.current.graphics,fan.speed,power.limit,clocks.max.graphics")
+        .arg("--format=csv,noheader")
+        // Tell the OS to record the command's output
+        .stdout(Stdio::piped())
+        // execute the command, wait for it to complete, then capture the output
+        .output()
+        // Blow up if the OS was unable to start the program
+        .unwrap();
 
-            memory_used = n.parse_value_path_def::<f32>("Data|#1") * 1024.0 * 1024.0;
-            timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+    // extract the raw bytes that we captured and interpret them as a string
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let mut nvsmi_output = stdout.lines().next().unwrap().split(", ").collect_vec();
 
-            memory_total = n.parse_value_path_def::<f32>("Data|#2") * 1024.0 * 1024.0;
-            timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+    let mut temperature: f32 = nvsmi_output[0].parse().unwrap();
+    let mut power_usage: f32 = nvsmi_output[1]
+        .split_ascii_whitespace()
+        .next()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let mut memory_total: f32 = nvsmi_output[2]
+        .split_ascii_whitespace()
+        .next()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let mut memory_used: f32 = nvsmi_output[3]
+        .split_ascii_whitespace()
+        .next()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let mut memory_free: f32 = nvsmi_output[4]
+        .split_ascii_whitespace()
+        .next()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let mut utilization: f32 = nvsmi_output[5]
+        .split_ascii_whitespace()
+        .next()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let mut clock_mhz: f32 = nvsmi_output[6]
+        .split_ascii_whitespace()
+        .next()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let mut fan_percentage: f32 = nvsmi_output[7]
+        .split_ascii_whitespace()
+        .next()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let mut power_limit: f32 = nvsmi_output[8]
+        .split_ascii_whitespace()
+        .next()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let mut max_clock: f32 = nvsmi_output[9]
+        .split_ascii_whitespace()
+        .next()
+        .unwrap()
+        .parse()
+        .unwrap();
 
-            fan_percentage = n.parse_value_path_def("Controls|#0");
-            timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+    let g = GpuData {
+        utilization,
+        temperature,
+        memory_free,
+        memory_used,
+        memory_total,
+        power_usage,
+        power_limit,
+        fan_percentage,
+        clock_mhz,
+        max_clock,
+    };
 
-            utilization = n.parse_value_path_def("Load|#0");
-            timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+    // loop {
+    //     let Some(line) = lines.next() else {
+    //         break;
+    //     };
 
-            clock_mhz = n.parse_value_path_def("Clocks|#0");
-            timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
-        };
-        drop(ohw);
+    //     if line == "    FB Memory Usage" {
+    //         let l = lines.next().unwrap();
+    //         memory_total = l[44..l.len()].to_string();
+    //         let l = lines.next().unwrap();
+    //         // _reserved = &l[44..l.len()].to_string();
+    //         let l = lines.next().unwrap();
+    //         memory_used = l[44..l.len()].to_string();
+    //         let l = lines.next().unwrap();
+    //         memory_free = l[44..l.len()].to_string();
+    //     }
+    //     if line == "    Utilization" {
+    //         let l = lines.next().unwrap();
+    //         utilization = l[44..l.len()].to_string();
+    //     }
+    //     if line == "    Temperature" {
+    //         let l = lines.next().unwrap();
+    //         temperature = l[44..l.len()].to_string();
+    //     }
+    //     if line == "    GPU Power Readings" {
+    //         let l = lines.next().unwrap();
+    //         power_usage = l[44..l.len()].to_string();
+    //         let l = lines.next().unwrap();
+    //         power_limit = l[44..l.len()].to_string();
+    //     }
+    // }
 
-        let g = GpuData {
-            utilization,
-            temperature,
-            memory_free,
-            memory_used,
-            memory_total,
-            power_usage,
-            power_limit,
-            fan_percentage,
-            clock_mhz,
-            max_clock,
-        };
-        timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+    // dbg!(&utilization);
+    // dbg!(&temperature);
+    // dbg!(&fan_percentage);
+    // dbg!(&power_usage);
+    // dbg!(&memory_free);
+    // dbg!(&memory_used);
+    // dbg!(&memory_total);
+    // dbg!(&clock_mhz);
+    // dbg!(&power_limit);
+    // dbg!(&max_clock);
+    // dbg!(&g);
 
-        appdata.gpu_buffer.add(g.utilization);
-        appdata
-            .gpu_mem_buffer
-            .add((g.memory_used / g.memory_total) as f64);
-        appdata
-            .gpu_power_buffer
-            .add((g.power_usage / g.power_limit) as f64);
-        appdata.gpu_temp_buffer.add((g.temperature) as f64);
+    appdata.gpu_buffer.add(g.utilization);
+    appdata
+        .gpu_mem_buffer
+        .add((g.memory_used / g.memory_total) as f64);
+    appdata
+        .gpu_power_buffer
+        .add((g.power_usage / g.power_limit) as f64);
+    appdata.gpu_temp_buffer.add((g.temperature) as f64);
 
-        if perf_trace && appdata.framecount < 1000 {
-            println!("{text}");
-        }
-        appdata.gpu = Some(g);
-        step_timing(appdata, CurrentStep::UpdateGPU);
-    }
+    appdata.gpu = Some(g);
+    step_timing(appdata, CurrentStep::UpdateGPU);
+
+    // panic!();
+
+    // if let Some(gpu) = appdata.nvid_info.as_ref() {
+    //     let mut text = String::new();
+    //     timing_to_str(appdata.current_frame_start, &mut text, perf_trace); // , 96
+
+    //     let mut utilization = 0.0;
+    //     let mut temperature = 0.0;
+    //     let mut fan_percentage = 0.0;
+    //     let mut power_usage = 0.0;
+    //     let mut memory_free = 0.0;
+    //     let mut memory_used = 0.0;
+    //     let mut memory_total = 0.0;
+    //     let mut clock_mhz = 0.0;
+
+    //     let power_limit;
+    //     let max_clock;
+    //     if let Some(gpu) = &appdata.gpu {
+    //         power_limit = gpu.power_limit;
+    //         max_clock = gpu.max_clock;
+    //     } else {
+    //         let gpu = gpu.device_by_index(0).unwrap();
+    //         power_limit = gpu.enforced_power_limit().unwrap() as f32 / 1000.0;
+    //         max_clock = gpu.max_clock_info(Clock::Graphics).unwrap_or_default() as f32;
+    //     }
+    //     timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+
+    //     let ohw = appdata.ohw_info.lock();
+    //     let n = ohw.select("#0|+images_icon/nvidia.png");
+    //     if let Some(n) = n {
+    //         timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+
+    //         temperature = n.parse_value_path_def("Temperatures|#0");
+    //         timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+
+    //         power_usage = n.parse_value_path_def("Powers|#0");
+    //         timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+
+    //         memory_free = n.parse_value_path_def::<f32>("Data|#0") * 1024.0 * 1024.0;
+    //         timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+
+    //         memory_used = n.parse_value_path_def::<f32>("Data|#1") * 1024.0 * 1024.0;
+    //         timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+
+    //         memory_total = n.parse_value_path_def::<f32>("Data|#2") * 1024.0 * 1024.0;
+    //         timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+
+    //         fan_percentage = n.parse_value_path_def("Controls|#0");
+    //         timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+
+    //         utilization = n.parse_value_path_def("Load|#0");
+    //         timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+
+    //         clock_mhz = n.parse_value_path_def("Clocks|#0");
+    //         timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+    //     };
+    //     drop(ohw);
+
+    //     let g = GpuData {
+    //         utilization,
+    //         temperature,
+    //         memory_free,
+    //         memory_used,
+    //         memory_total,
+    //         power_usage,
+    //         power_limit,
+    //         fan_percentage,
+    //         clock_mhz,
+    //         max_clock,
+    //     };
+    //     timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
+
+    //     appdata.gpu_buffer.add(g.utilization);
+    //     appdata
+    //         .gpu_mem_buffer
+    //         .add((g.memory_used / g.memory_total) as f64);
+    //     appdata
+    //         .gpu_power_buffer
+    //         .add((g.power_usage / g.power_limit) as f64);
+    //     appdata.gpu_temp_buffer.add((g.temperature) as f64);
+
+    //     if perf_trace && appdata.framecount < 1000 {
+    //         println!("{text}");
+    //     }
+    //     appdata.gpu = Some(g);
+    //     step_timing(appdata, CurrentStep::UpdateGPU);
+    // }
 }
 
 // FIX
@@ -479,7 +652,8 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
 }
 
 fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
-    if appdata.nvid_info.is_some() {
+    // if appdata.nvid_info.is_some() {
+    if let Some(gpu) = &appdata.gpu {
         ui.vertical_centered(|ui| ui.label("GPU"));
 
         Grid::new("gpu_grid_upper")
@@ -488,27 +662,21 @@ fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
             .striped(true)
             .show(ui, |ui| {
                 ui.add(
-                    EdgyProgressBar::new(appdata.gpu.as_ref().unwrap().utilization as f32 / 100.0)
+                    EdgyProgressBar::new(gpu.utilization as f32 / 100.0)
                         .text(
-                            RichText::new(format!(
-                                "GPU: {:.1}%",
-                                appdata.gpu.as_ref().unwrap().utilization
-                            ))
-                            .small()
-                            .strong(),
+                            RichText::new(format!("GPU: {:.1}%", gpu.utilization))
+                                .small()
+                                .strong(),
                         )
                         .desired_width(SIDEBAR_WIDTH / 2.0 - 5.0)
                         .fill(auto_color_dark(0)),
                 );
                 ui.add(
-                    EdgyProgressBar::new(appdata.gpu.as_ref().unwrap().temperature / 100.0)
+                    EdgyProgressBar::new(gpu.temperature / 100.0)
                         .text(
-                            RichText::new(format!(
-                                "{:.0} °C",
-                                appdata.gpu.as_ref().unwrap().temperature
-                            ))
-                            .small()
-                            .strong(),
+                            RichText::new(format!("{:.0} °C", gpu.temperature))
+                                .small()
+                                .strong(),
                         )
                         .desired_width(SIDEBAR_WIDTH / 2.0 - 5.0)
                         .fill(auto_color_dark(3)),
@@ -516,48 +684,36 @@ fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
             });
 
         ui.add(
-            EdgyProgressBar::new(
-                appdata.gpu.as_ref().unwrap().memory_used
-                    / appdata.gpu.as_ref().unwrap().memory_total,
-            )
-            .text(
-                RichText::new(format!(
-                    "Mem: {} / {}",
-                    format_bytes(appdata.gpu.as_ref().unwrap().memory_used as f64),
-                    format_bytes(appdata.gpu.as_ref().unwrap().memory_total as f64)
-                ))
-                .small()
-                .strong(),
-            )
-            .fill(auto_color_dark(1)),
+            EdgyProgressBar::new(gpu.memory_used / gpu.memory_total)
+                .text(
+                    RichText::new(format!(
+                        "Mem: {} / {}",
+                        format_bytes(gpu.memory_used as f64),
+                        format_bytes(gpu.memory_total as f64)
+                    ))
+                    .small()
+                    .strong(),
+                )
+                .fill(auto_color_dark(1)),
         );
 
         ui.add(
-            EdgyProgressBar::new(
-                appdata.gpu.as_ref().unwrap().power_usage
-                    / appdata.gpu.as_ref().unwrap().power_limit,
-            )
-            .text(
-                RichText::new(format!(
-                    "Pow: {:.0}W / {:.0}W",
-                    appdata.gpu.as_ref().unwrap().power_usage,
-                    appdata.gpu.as_ref().unwrap().power_limit
-                ))
-                .small()
-                .strong(),
-            )
-            .fill(auto_color_dark(2)),
+            EdgyProgressBar::new(gpu.power_usage / gpu.power_limit)
+                .text(
+                    RichText::new(format!(
+                        "Pow: {:.0}W / {:.0}W",
+                        gpu.power_usage, gpu.power_limit
+                    ))
+                    .small()
+                    .strong(),
+                )
+                .fill(auto_color_dark(2)),
         );
         ui.add(
-            EdgyProgressBar::new(
-                appdata.gpu.as_ref().unwrap().clock_mhz
-                    / appdata.gpu.as_ref().unwrap().max_clock.max(0.01),
-            )
-            .text(
+            EdgyProgressBar::new(gpu.clock_mhz / gpu.max_clock.max(0.01)).text(
                 RichText::new(format!(
                     "Clk: {:.0}MHz / {:.0}MHz",
-                    appdata.gpu.as_ref().unwrap().clock_mhz,
-                    appdata.gpu.as_ref().unwrap().max_clock
+                    gpu.clock_mhz, gpu.max_clock
                 ))
                 .small()
                 .strong(),
@@ -804,19 +960,29 @@ fn show_drives(appdata: &MyApp, ui: &mut Ui) {
                 .disks
                 .iter()
                 .sorted_by_key(|d| d.mount_point())
+                .filter(|d| d.file_system() != "vfat")
+                .group_by(|d| d.name())
+                .into_iter()
+                .map(|(_, g)| g.into_iter().next().unwrap())
                 .enumerate()
             {
                 ui.spacing_mut().interact_size = [15.0, 12.0].into();
-                let mount = d.mount_point().to_str().unwrap().replace('\\', "");
-                let (_, _, value) = appdata
-                    .disk_time_value_handle_map
-                    .iter()
-                    .find(|(s, _, _)| s == &mount)
-                    .unwrap();
+                let replace = d.mount_point().to_str().unwrap().replace('\\', "");
+                let collect_vec = replace.split("/").collect_vec();
+                let mount = collect_vec.last().unwrap();
+
+                // FIXME: rework disk io system in linux
+                // let (_, _, value) = appdata
+                //     .disk_time_value_handle_map
+                //     .iter()
+                //     .find(|(s, _, _)| s == mount)
+                //     .unwrap();
 
                 ui.add(Label::new(
                     RichText::new(format!(
-                        "{} {value:.1}%",
+                        // FIXME: rework disk io system in linux
+                        // "/{} {value:.1}%",
+                        "/{}",
                         if mount.len() < 12 {
                             mount.to_string()
                         } else {
@@ -887,6 +1053,17 @@ pub fn init_system(appdata: &mut MyApp) {
 
     // appdata.process_metric_handles = init_process_metrics(appdata.windows_performance_query_handle);
     appdata.disks.refresh(true);
+
+    // println!();
+    // for ele in appdata.disks.iter() {
+    //     // dbg!(ele);
+    //     dbg!(ele.name());
+    //     dbg!(&ele.mount_point());
+    //     dbg!(ele.file_system());
+    //     println!();
+    // }
+    // panic!();
+
     appdata.system_status.refresh_cpu_all();
 
     // iterate over disks and add disk io time counters
@@ -1046,50 +1223,12 @@ fn refresh_cpu(appdata: &mut MyApp) {
         .cpu_buffer
         .add(appdata.system_status.global_cpu_usage());
 
-    // let ohw_opt = appdata.ohw_info.lock();
-    // let coretemps = if let Some(ohw) = ohw_opt.as_ref() {
-    //     ohw.Children[0]
-    //         .Children
-    //         .iter()
-    //         .find(|n| n.ImageURL == "images_icon/cpu.png")
-    //         .unwrap()
-    //         .Children
-    //         .iter()
-    //         .find(|n| n.Text == "Temperatures")
-    //         .unwrap()
-    //         .Children
-    //         .iter()
-    //         .filter_map(|n| {
-    //             if n.Text.contains("CPU Core #") {
-    //                 if let Ok(text) = n.Text.replace("CPU Core #", "").parse::<i32>() {
-    //                     Some((
-    //                         text,
-    //                         n.Value
-    //                             .replace("°C", "")
-    //                             .replace(',', ".")
-    //                             .trim()
-    //                             .parse::<f32>()
-    //                             .unwrap_or_default(),
-    //                     ))
-    //                 } else {
-    //                     None
-    //                 }
-    //             } else {
-    //                 None
-    //             }
-    //         })
-    //         .collect_vec()
-    // } else {
-    //     vec![]
-    // };
-
-    let cpu_temp = dbg!(
-        dbg!(&read_to_string("/sys/class/thermal/thermal_zone2/temp")
-            .unwrap()
-            .trim())
+    let cpu_temp = &read_to_string("/sys/class/thermal/thermal_zone2/temp")
+        .unwrap()
+        .trim()
         .parse::<f32>()
         .unwrap()
-    ) / 1000.0;
+        / 1000.0;
 
     let coretemps = appdata
         .system_status
@@ -1109,15 +1248,14 @@ fn refresh_cpu(appdata: &mut MyApp) {
     appdata.cpu_maxtemp_buffer.add(max_temp.unwrap_or(0.0));
 
     // let cpu_power = ohw_opt.parse_value_path_def("#0|+images_icon/cpu.png|Power|Package");
-    let current_power: u128 = dbg!(dbg!(&read_to_string(
-        "/sys/devices/virtual/powercap/intel-rapl/subsystem/intel-rapl:0/energy_uj"
-    )
-    .unwrap()
-    .trim())
-    .parse()
-    .unwrap());
+    let current_power: u128 =
+        read_to_string("/sys/devices/virtual/powercap/intel-rapl/subsystem/intel-rapl:0/energy_uj")
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
 
-    let timediff = dbg!(appdata.last_update_timestamp.elapsed().as_millis());
+    let timediff = appdata.last_update_timestamp.elapsed().as_millis();
     if timediff > 100 {
         let pow = (current_power - appdata.last_joules) as f64 / 1_000_000.0;
         let uj_per_ms = pow / (timediff as f64 / 1000.0); // uj per ms -> j per s -> W

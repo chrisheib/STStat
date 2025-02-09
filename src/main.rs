@@ -21,7 +21,6 @@ use eframe::{
     epaint::Color32,
 };
 use ekko::{Ekko, EkkoResponse, EkkoSettings};
-use nvml_wrapper::Nvml;
 use ohw::OHWNode;
 use parking_lot::Mutex;
 // use process::{Process, ProcessMetricHandles};
@@ -92,11 +91,15 @@ fn main() -> Result<(), eframe::Error> {
     let thread_update_available = update_available.clone();
     thread::spawn(move || check_update_thread(thread_update_available));
 
-    let nvid_info = if let Ok(n) = Nvml::init() {
-        Some(n)
-    } else {
-        None
-    };
+    // let nvid_info = if let Ok(n) = Nvml::init() {
+    //     Some(n)
+    // } else {
+    //     None
+    // };
+
+    // let nvml = Nvml::init().unwrap();
+    // Get the first `Device` (GPU) in the system
+    // let device = nvml.device_by_index(0).unwrap();
 
     let mut appstate = MyApp {
         system_status: System::new_all(),
@@ -114,7 +117,7 @@ fn main() -> Result<(), eframe::Error> {
         ram_buffer: CircleVec::new(),
         ohw_info,
         rt,
-        nvid_info,
+        // nvid_info,
         gpu: None,
         timing: CircleVec::new(),
         current_frame_start: Instant::now(),
@@ -142,6 +145,7 @@ fn main() -> Result<(), eframe::Error> {
         last_update_timestamp: Instant::now(),
         last_joules: 0,
         coretemps: vec![],
+        // nvml_device: nvml,
     };
 
     get_screen_size(&appstate, None);
@@ -332,7 +336,7 @@ pub struct MyApp {
     pub windows_performance_query_handle: isize,
     pub disk_time_value_handle_map: Vec<(String, isize, f64)>,
     pub core_time_value_handle_map: Vec<(usize, isize, f64)>,
-    pub nvid_info: Option<Nvml>,
+    // pub nvid_info: Option<Nvml>,
     pub ohw_info: Arc<Mutex<Option<OHWNode>>>,
     pub rt: Runtime,
     pub gpu: Option<GpuData>,
@@ -342,7 +346,7 @@ pub struct MyApp {
     pub total_ram: f32,
     pub net_up_buffer: HashMap<String, Arc<CircleVec<f64, 100>>>,
     pub net_down_buffer: HashMap<String, Arc<CircleVec<f64, 100>>>,
-    pub gpu_buffer: Arc<CircleVec<f64, 100>>,
+    pub gpu_buffer: Arc<CircleVec<f32, 100>>,
     pub gpu_mem_buffer: Arc<CircleVec<f64, 100>>,
     pub gpu_power_buffer: Arc<CircleVec<f64, 100>>,
     pub gpu_temp_buffer: Arc<CircleVec<f64, 100>>,
@@ -361,6 +365,7 @@ pub struct MyApp {
     pub last_update_timestamp: Instant,
     pub last_joules: u128, // pub monitors: Vec<MyMonitor>,
     pub coretemps: Vec<(String, f32)>,
+    // pub nvml_device: Nvml,
 }
 
 // #[derive(Serialize, Deserialize, Debug)]
@@ -484,7 +489,7 @@ impl eframe::App for MyApp {
                 system_info::set_system_info_components(self, ui);
                 ui.checkbox(&mut self.show_settings, "Show settings");
 
-                // show_settings(self, ui, scale_override);
+                show_settings(self, ui, None);
             });
 
             let time_to_next_second = 1000 - chrono::Local::now().timestamp_subsec_millis();

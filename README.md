@@ -7,16 +7,19 @@ Needs [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwa
 
 ![Preview](https://raw.githubusercontent.com/chrisheib/STStat/main/screenshot/lhm.jpg)
 
+## Linux Caveats
+* To read energy use, the energy_uj system file needs to be readable by others. Add `chmod a+r /sys/class/powercap/intel-rapl:0/energy_uj` to startup scripts.
+
 ## Goals
 * 💻 Provide an overview of your computers ressources.
-* ✅ Focus on stats that provide actual value. 
+* ✅ Focus on stats that provide actual value.
 * 🚀 Don't generate much load. STStat is developed as replacement for Windows Gadgets that were running in Webviews rendered with HTML and JS, and should always be easier on the battery and general ressource usage. (If you see usage above 0.5% for the ststat.exe process, please use 'Settings -> trace perf' to trace the actual performance, save a report a few seconds later with 'save trace', and make sure to include the resulting timings.txt in your issue!)
 * 🪟 Use the Windows API to look and feel like a true native windows sidebar, including limiting the space of maximised windows and not showing up in the task switcher.
 
 ## Limitations
 * Not yet tested on AMD CPUs and GPUs, super limited testing in general. If you run it successfully (or run into errors - please attach the errors.txt, if present) please do give feedback!
 * Only runs on Windows (tested on Win 10 and Win 11). Most of the functions directly query the Windows API.
-* Kinda depends on LibreHardwareMonitor to be useful. I tried implementing most of the stat readouts from scratch, but couldn't easily get performance comparable to that of LHWM. As I need that for the temperature readouts anyway, I relied on it a bit more than necessary. 
+* Kinda depends on LibreHardwareMonitor to be useful. I tried implementing most of the stat readouts from scratch, but couldn't easily get performance comparable to that of LHWM. As I need that for the temperature readouts anyway, I relied on it a bit more than necessary.
 
 ## Feature Overview
 * CPU and RAM:
@@ -32,7 +35,7 @@ Needs [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwa
   * Core clock and max
   * GPU temp (°C)
 * Drives
-  * Free Disk space 
+  * Free Disk space
   * Disk usage time
 * Net (Configurable via settings)
   * Up and Down traffic
@@ -43,7 +46,7 @@ Needs [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwa
 * Processes (Doubleclick to open task manager!)
   * Group processes by name (x10 -> 10 processes with this name)
   * show top CPU and top RAM processes
-  * reading process data is expensive -> slower refresh 
+  * reading process data is expensive -> slower refresh
 * Settings
   * Show Networks: Check every network adapter you want to monitor
   * Screen ID: On which screen the sidebar should be displayed

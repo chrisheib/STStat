@@ -3,6 +3,7 @@
   lib,
   config,
   inputs,
+  # autoAddDriverRunpath,
   ...
 }: {
   # https://devenv.sh/basics/
@@ -28,6 +29,9 @@
       xorg.libXcursor
       xorg.libXi
       xorg.libXrandr
+      # linuxPackages.nvidia_x11
+      # linuxKernel.packages.linux_xanmod_latest.nvidia_x11
+      autoAddDriverRunpath
     ]}";
 
   env.RUST_BACKTRACE = "1";
