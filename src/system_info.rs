@@ -1241,10 +1241,10 @@ fn refresh_cpu(appdata: &mut MyApp) {
         .add(appdata.system_status.global_cpu_usage());
 
     let cpu_temp = &read_to_string("/sys/class/thermal/thermal_zone2/temp")
-        .unwrap()
+        .unwrap_or_default()
         .trim()
         .parse::<f32>()
-        .unwrap()
+        .unwrap_or_default()
         / 1000.0;
 
     let coretemps = appdata
@@ -1267,10 +1267,10 @@ fn refresh_cpu(appdata: &mut MyApp) {
     // let cpu_power = ohw_opt.parse_value_path_def("#0|+images_icon/cpu.png|Power|Package");
     let current_power: u128 =
         read_to_string("/sys/devices/virtual/powercap/intel-rapl/subsystem/intel-rapl:0/energy_uj")
-            .unwrap()
+            .unwrap_or_default()
             .trim()
             .parse()
-            .unwrap();
+            .unwrap_or_default();
 
     let timediff = appdata.last_update_timestamp.elapsed().as_millis();
     if timediff > 100 {

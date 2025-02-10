@@ -165,7 +165,7 @@ fn main() -> Result<(), eframe::Error> {
     // )
     // .map(|d| d.scale_factor)
     // .unwrap_or(1.0);
-    let initial_window_size = (130.0, 800.0);
+    let initial_window_size = (SIDEBAR_WIDTH, 800.0);
     // let initial_window_size = (
     //     s.current_settings.location.width,
     //     s.current_settings.location.height * scale + 48.0 * (scale - 1.0),
