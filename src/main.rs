@@ -29,7 +29,9 @@ use serde::{Deserialize, Serialize};
 use settings::{show_settings, MySettings};
 // use sidebar::dispose_sidebar;
 use sysinfo::{Disks, Networks, System};
-use system_info::{get_windows_glass_color, init_system, refresh, refresh_color, GpuData};
+use system_info::{
+    get_windows_glass_color, init_system, refresh, refresh_color, run_nvidia_smi, GpuData,
+};
 use tokio::{runtime::Runtime, time::sleep};
 use winit::{
     application::ApplicationHandler,
@@ -88,8 +90,8 @@ fn main() -> Result<(), eframe::Error> {
     // rt.spawn(ohw_thread(thread_ohw));
 
     let update_available = Arc::new(AtomicBool::new(false));
-    let thread_update_available = update_available.clone();
-    thread::spawn(move || check_update_thread(thread_update_available));
+    // let thread_update_available = update_available.clone();
+    // thread::spawn(move || check_update_thread(thread_update_available));
 
     // let nvid_info = if let Ok(n) = Nvml::init() {
     //     Some(n)
@@ -100,6 +102,10 @@ fn main() -> Result<(), eframe::Error> {
     // let nvml = Nvml::init().unwrap();
     // Get the first `Device` (GPU) in the system
     // let device = nvml.device_by_index(0).unwrap();
+
+    let gpu_data = Arc::new(std::sync::Mutex::new(GpuData::default()));
+    let thread_gpu = gpu_data.clone();
+    thread::spawn(move || run_nvidia_smi(thread_gpu));
 
     let mut appstate = MyApp {
         system_status: System::new_all(),
@@ -118,7 +124,7 @@ fn main() -> Result<(), eframe::Error> {
         ohw_info,
         rt,
         // nvid_info,
-        gpu: None,
+        gpu: Some(gpu_data),
         timing: CircleVec::new(),
         current_frame_start: Instant::now(),
         cur_ram: 0.0,
@@ -339,7 +345,7 @@ pub struct MyApp {
     // pub nvid_info: Option<Nvml>,
     pub ohw_info: Arc<Mutex<Option<OHWNode>>>,
     pub rt: Runtime,
-    pub gpu: Option<GpuData>,
+    pub gpu: Option<Arc<std::sync::Mutex<GpuData>>>,
     pub timing: Arc<CircleVec<TimingStep, 2000>>,
     pub current_frame_start: Instant,
     pub cur_ram: f32,
@@ -382,7 +388,7 @@ impl eframe::App for MyApp {
     }
 
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        println!("up");
+        // println!("up");
 
         self.current_frame_start = Instant::now();
         step_timing(self, CurrentStep::Begin);
@@ -427,7 +433,7 @@ impl eframe::App for MyApp {
             drop(s);
             println!("Setup sidebar done");
         }
-        dbg!(ctx.input(|i| i.screen_rect));
+        // dbg!(ctx.input(|i| i.screen_rect));
 
         // if self.firstupdate && dbg!(ctx.input(|i| i.viewport().outer_rect)); // .info(). .window_info.position) != Some(check_pos.into()) {
         //     println!(
@@ -485,7 +491,7 @@ impl eframe::App for MyApp {
             }
 
             ScrollArea::vertical().show(ui, |ui| {
-                println!("yo");
+                // println!("yo");
                 system_info::set_system_info_components(self, ui);
                 ui.checkbox(&mut self.show_settings, "Show settings");
 

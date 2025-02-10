@@ -1,4 +1,12 @@
-use std::{any::Any, fs::read_to_string, process::Stdio, time::Instant};
+use std::{
+    any::Any,
+    fs::read_to_string,
+    io::{BufRead, BufReader},
+    process::Stdio,
+    sync::{Arc, Mutex},
+    thread,
+    time::{Duration, Instant},
+};
 
 use crate::{
     bytes_format::format_bytes,
@@ -215,88 +223,88 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
     //     --format=csv,noheader
     // 57, 41.71 W, 12288 MiB, 1532 MiB, 10403 MiB, 22 %, 870 MHz, 870 MHz, 810 MHz, 0 %
 
-    let output = std::process::Command::new("nvidia-smi")
-        .arg("--query-gpu=temperature.gpu,power.draw,memory.total,memory.used,memory.free,utilization.gpu,clocks.current.graphics,fan.speed,power.limit,clocks.max.graphics")
-        .arg("--format=csv,noheader")
-        // Tell the OS to record the command's output
-        .stdout(Stdio::piped())
-        // execute the command, wait for it to complete, then capture the output
-        .output()
-        // Blow up if the OS was unable to start the program
-        .unwrap();
+    // let output = std::process::Command::new("nvidia-smi")
+    //     .arg("--query-gpu=temperature.gpu,power.draw,memory.total,memory.used,memory.free,utilization.gpu,clocks.current.graphics,fan.speed,power.limit,clocks.max.graphics")
+    //     .arg("--format=csv,noheader")
+    //     // Tell the OS to record the command's output
+    //     .stdout(Stdio::piped())
+    //     // execute the command, wait for it to complete, then capture the output
+    //     .output()
+    //     // Blow up if the OS was unable to start the program
+    //     .unwrap();
 
-    // extract the raw bytes that we captured and interpret them as a string
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    let mut nvsmi_output = stdout.lines().next().unwrap().split(", ").collect_vec();
+    // // extract the raw bytes that we captured and interpret them as a string
+    // let stdout = String::from_utf8(output.stdout).unwrap();
+    // let mut nvsmi_output = stdout.lines().next().unwrap().split(", ").collect_vec();
 
-    let mut temperature: f32 = nvsmi_output[0].parse().unwrap();
-    let mut power_usage: f32 = nvsmi_output[1]
-        .split_ascii_whitespace()
-        .next()
-        .unwrap()
-        .parse()
-        .unwrap();
-    let mut memory_total: f32 = nvsmi_output[2]
-        .split_ascii_whitespace()
-        .next()
-        .unwrap()
-        .parse()
-        .unwrap();
-    let mut memory_used: f32 = nvsmi_output[3]
-        .split_ascii_whitespace()
-        .next()
-        .unwrap()
-        .parse()
-        .unwrap();
-    let mut memory_free: f32 = nvsmi_output[4]
-        .split_ascii_whitespace()
-        .next()
-        .unwrap()
-        .parse()
-        .unwrap();
-    let mut utilization: f32 = nvsmi_output[5]
-        .split_ascii_whitespace()
-        .next()
-        .unwrap()
-        .parse()
-        .unwrap();
-    let mut clock_mhz: f32 = nvsmi_output[6]
-        .split_ascii_whitespace()
-        .next()
-        .unwrap()
-        .parse()
-        .unwrap();
-    let mut fan_percentage: f32 = nvsmi_output[7]
-        .split_ascii_whitespace()
-        .next()
-        .unwrap()
-        .parse()
-        .unwrap();
-    let mut power_limit: f32 = nvsmi_output[8]
-        .split_ascii_whitespace()
-        .next()
-        .unwrap()
-        .parse()
-        .unwrap();
-    let mut max_clock: f32 = nvsmi_output[9]
-        .split_ascii_whitespace()
-        .next()
-        .unwrap()
-        .parse()
-        .unwrap();
+    // let mut temperature: f32 = nvsmi_output[0].parse().unwrap();
+    // let mut power_usage: f32 = nvsmi_output[1]
+    //     .split_ascii_whitespace()
+    //     .next()
+    //     .unwrap()
+    //     .parse()
+    //     .unwrap();
+    // let mut memory_total: f32 = nvsmi_output[2]
+    //     .split_ascii_whitespace()
+    //     .next()
+    //     .unwrap()
+    //     .parse()
+    //     .unwrap();
+    // let mut memory_used: f32 = nvsmi_output[3]
+    //     .split_ascii_whitespace()
+    //     .next()
+    //     .unwrap()
+    //     .parse()
+    //     .unwrap();
+    // let mut memory_free: f32 = nvsmi_output[4]
+    //     .split_ascii_whitespace()
+    //     .next()
+    //     .unwrap()
+    //     .parse()
+    //     .unwrap();
+    // let mut utilization: f32 = nvsmi_output[5]
+    //     .split_ascii_whitespace()
+    //     .next()
+    //     .unwrap()
+    //     .parse()
+    //     .unwrap();
+    // let mut clock_mhz: f32 = nvsmi_output[6]
+    //     .split_ascii_whitespace()
+    //     .next()
+    //     .unwrap()
+    //     .parse()
+    //     .unwrap();
+    // let mut fan_percentage: f32 = nvsmi_output[7]
+    //     .split_ascii_whitespace()
+    //     .next()
+    //     .unwrap()
+    //     .parse()
+    //     .unwrap();
+    // let mut power_limit: f32 = nvsmi_output[8]
+    //     .split_ascii_whitespace()
+    //     .next()
+    //     .unwrap()
+    //     .parse()
+    //     .unwrap();
+    // let mut max_clock: f32 = nvsmi_output[9]
+    //     .split_ascii_whitespace()
+    //     .next()
+    //     .unwrap()
+    //     .parse()
+    //     .unwrap();
 
-    let g = GpuData {
-        utilization,
-        temperature,
-        memory_free,
-        memory_used,
-        memory_total,
-        power_usage,
-        power_limit,
-        fan_percentage,
-        clock_mhz,
-        max_clock,
-    };
+    // let g = GpuData {
+    //     utilization,
+    //     temperature,
+    //     memory_free,
+    //     memory_used,
+    //     memory_total,
+    //     power_usage,
+    //     power_limit,
+    //     fan_percentage,
+    //     clock_mhz,
+    //     max_clock,
+    // };
 
     // loop {
     //     let Some(line) = lines.next() else {
@@ -341,16 +349,22 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
     // dbg!(&max_clock);
     // dbg!(&g);
 
-    appdata.gpu_buffer.add(g.utilization);
-    appdata
-        .gpu_mem_buffer
-        .add((g.memory_used / g.memory_total) as f64);
-    appdata
-        .gpu_power_buffer
-        .add((g.power_usage / g.power_limit) as f64);
-    appdata.gpu_temp_buffer.add((g.temperature) as f64);
+    if let Some(g) = &appdata.gpu {
+        let l = g.lock().unwrap();
+        let gpu = l.clone();
+        drop(l);
 
-    appdata.gpu = Some(g);
+        appdata.gpu_buffer.add(gpu.utilization);
+        appdata
+            .gpu_mem_buffer
+            .add((gpu.memory_used / gpu.memory_total) as f64);
+        appdata
+            .gpu_power_buffer
+            .add((gpu.power_usage / gpu.power_limit) as f64);
+        appdata.gpu_temp_buffer.add((gpu.temperature) as f64);
+    }
+
+    // appdata.gpu = Some(g);
     step_timing(appdata, CurrentStep::UpdateGPU);
 
     // panic!();
@@ -654,6 +668,9 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
 fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
     // if appdata.nvid_info.is_some() {
     if let Some(gpu) = &appdata.gpu {
+        let l = gpu.lock().unwrap();
+        let gpu = l.clone();
+        drop(l);
         ui.vertical_centered(|ui| ui.label("GPU"));
 
         Grid::new("gpu_grid_upper")
@@ -1296,5 +1313,172 @@ pub fn refresh_battery(appdata: &mut MyApp) {
             appdata.battery_level_next_update =
                 now + chrono::Duration::seconds(60 - now.time().second() as i64);
         }
+    }
+}
+
+pub fn run_nvidia_smi(shared_data: Arc<Mutex<GpuData>>) {
+    loop {
+        // Start nvidia-smi in continuous mode
+        let mut child = match std::process::Command::new("nvidia-smi")
+            .args(&[
+                "--query-gpu=temperature.gpu,power.draw,memory.total,memory.used,memory.free,utilization.gpu,clocks.current.graphics,fan.speed,power.limit,clocks.max.graphics",
+                // "--format=csv,noheader,nounits",
+                "--format=csv,noheader",
+                "-l",
+                "1",
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+        {
+            Ok(child) => child,
+            Err(e) => {
+                eprintln!("Failed to start nvidia-smi: {}", e);
+                thread::sleep(Duration::from_secs(5));
+                continue;
+            }
+        };
+
+        let stdout = match child.stdout.take() {
+            Some(stdout) => stdout,
+            None => {
+                eprintln!("Failed to capture stdout");
+                thread::sleep(Duration::from_secs(5));
+                continue;
+            }
+        };
+
+        let stderr = match child.stderr.take() {
+            Some(stderr) => stderr,
+            None => {
+                eprintln!("Failed to capture stderr");
+                thread::sleep(Duration::from_secs(5));
+                continue;
+            }
+        };
+
+        // Use BufReader to read output line by line
+        let reader = BufReader::new(stdout);
+
+        // Clone shared data for error handling
+        let shared_data_clone = Arc::clone(&shared_data);
+
+        // Handle stderr in a separate thread to avoid blocking
+        thread::spawn(move || {
+            let err_reader = BufReader::new(stderr);
+            for e in err_reader.lines() {
+                eprintln!("nvidia-smi stderr: {:?}", e);
+            }
+        });
+
+        // Read and parse each line asynchronously
+        for line in reader.lines() {
+            match line {
+                Ok(line) => {
+                    // Parse the line to extract GPU data
+
+                    // dbg!(&line);
+
+                    let nvsmi_output = line.split(", ").collect_vec();
+
+                    let temperature: f32 = nvsmi_output[0].parse().unwrap();
+                    let power_usage: f32 = nvsmi_output[1]
+                        .split_ascii_whitespace()
+                        .next()
+                        .unwrap()
+                        .parse()
+                        .unwrap();
+                    let memory_total: f32 = 1024.0
+                        * 1024.0
+                        * nvsmi_output[2]
+                            .split_ascii_whitespace()
+                            .next()
+                            .unwrap()
+                            .parse::<f32>()
+                            .unwrap();
+                    let memory_used: f32 = 1024.0
+                        * 1024.0
+                        * nvsmi_output[3]
+                            .split_ascii_whitespace()
+                            .next()
+                            .unwrap()
+                            .parse::<f32>()
+                            .unwrap();
+                    let memory_free: f32 = 1024.0
+                        * 1024.0
+                        * nvsmi_output[4]
+                            .split_ascii_whitespace()
+                            .next()
+                            .unwrap()
+                            .parse::<f32>()
+                            .unwrap();
+                    let utilization: f32 = nvsmi_output[5]
+                        .split_ascii_whitespace()
+                        .next()
+                        .unwrap()
+                        .parse()
+                        .unwrap();
+                    let clock_mhz: f32 = nvsmi_output[6]
+                        .split_ascii_whitespace()
+                        .next()
+                        .unwrap()
+                        .parse()
+                        .unwrap();
+                    let fan_percentage: f32 = nvsmi_output[7]
+                        .split_ascii_whitespace()
+                        .next()
+                        .unwrap()
+                        .parse()
+                        .unwrap();
+                    let power_limit: f32 = nvsmi_output[8]
+                        .split_ascii_whitespace()
+                        .next()
+                        .unwrap()
+                        .parse()
+                        .unwrap();
+                    let max_clock: f32 = nvsmi_output[9]
+                        .split_ascii_whitespace()
+                        .next()
+                        .unwrap()
+                        .parse()
+                        .unwrap();
+
+                    let g = GpuData {
+                        utilization,
+                        temperature,
+                        memory_free,
+                        memory_used,
+                        memory_total,
+                        power_usage,
+                        power_limit,
+                        fan_percentage,
+                        clock_mhz,
+                        max_clock,
+                    };
+
+                    let mut data = shared_data_clone.lock().unwrap();
+                    *data = g;
+                }
+                Err(e) => {
+                    eprintln!("Error reading nvidia-smi output: {}", e);
+                    break; // Exit the loop to restart the command
+                }
+            }
+        }
+
+        // If the loop exits, attempt to kill the child process
+        match child.kill() {
+            Ok(_) => eprintln!("Killed nvidia-smi process."),
+            Err(e) => eprintln!("Failed to kill nvidia-smi: {}", e),
+        }
+
+        // Wait for the child process to exit
+        match child.wait() {
+            Ok(status) => eprintln!("nvidia-smi exited with status: {}", status),
+            Err(e) => eprintln!("Failed to wait on nvidia-smi: {}", e),
+        }
+
+        // Sleep before restarting
+        thread::sleep(Duration::from_secs(5));
     }
 }
