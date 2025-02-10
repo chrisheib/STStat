@@ -1,5 +1,6 @@
 use std::{
     any::Any,
+    fmt,
     fs::read_to_string,
     io::{BufRead, BufReader},
     process::Stdio,
@@ -38,7 +39,7 @@ use eframe::{
 use egui_extras::{Column, TableBuilder};
 use itertools::Itertools;
 // use nvml_wrapper::enum_wrappers::device::{Clock, ClockId, TemperatureSensor};
-use sysinfo::CpuRefreshKind;
+use sysinfo::{CpuRefreshKind, Pid};
 use tokio::process::Command;
 // use windows::{
 //     core::PWSTR,
@@ -188,166 +189,7 @@ fn timing_to_str(timestamp: std::time::Instant, text: &mut String, perf_trace: b
 }
 
 pub fn refresh_gpu(appdata: &mut MyApp) {
-    let perf_trace = appdata.settings.lock().current_settings.track_timings;
     step_timing(appdata, CurrentStep::UpdateGPU);
-
-    // Get the first `Device` (GPU) in the system
-    // let device = appdata.nvml_device.device_by_index(0).unwrap();
-
-    // let mut utilization = device.utilization_rates().unwrap().gpu;
-    // let mut temperature = device.temperature(TemperatureSensor::Gpu).unwrap();
-    // let mut fan_percentage = device.fan_speed(0).unwrap();
-    // let mut memory_free = device.memory_info().unwrap().free;
-    // let mut memory_used = device.memory_info().unwrap().used;
-    // let mut memory_total = device.memory_info().unwrap().total;
-    // let mut clock_mhz = device.clock(Clock::Graphics, ClockId::Current).unwrap();
-    // let mut power_usage = device.power_usage().unwrap();
-    // let mut power_limit = device.power_management_limit().unwrap();
-
-    // let output = std::process::Command::new("nvidia-smi")
-    //     .arg("-q")
-    //     .arg("-d")
-    //     .arg("TEMPERATURE,POWER,MEMORY,UTILIZATION,CLOCKS,FAN_SPEED")
-    //     // Tell the OS to record the command's output
-    //     .stdout(Stdio::piped())
-    //     // execute the command, wait for it to complete, then capture the output
-    //     .output()
-    //     // Blow up if the OS was unable to start the program
-    //     .unwrap();
-
-    // // extract the raw bytes that we captured and interpret them as a string
-    // let stdout = dbg!(String::from_utf8(output.stdout).unwrap());
-    // let mut lines = stdout.lines();
-
-    // nvidia-smi --query-gpu=temperature.gpu,power.draw,memory.total,memory.used,memory.free,utilization.gpu,clocks.current.graphics,clocks.current.sm,clocks.current.memory,fan.speed \
-    //     --format=csv,noheader
-    // 57, 41.71 W, 12288 MiB, 1532 MiB, 10403 MiB, 22 %, 870 MHz, 870 MHz, 810 MHz, 0 %
-
-    // let output = std::process::Command::new("nvidia-smi")
-    //     .arg("--query-gpu=temperature.gpu,power.draw,memory.total,memory.used,memory.free,utilization.gpu,clocks.current.graphics,fan.speed,power.limit,clocks.max.graphics")
-    //     .arg("--format=csv,noheader")
-    //     // Tell the OS to record the command's output
-    //     .stdout(Stdio::piped())
-    //     // execute the command, wait for it to complete, then capture the output
-    //     .output()
-    //     // Blow up if the OS was unable to start the program
-    //     .unwrap();
-
-    // // extract the raw bytes that we captured and interpret them as a string
-    // let stdout = String::from_utf8(output.stdout).unwrap();
-    // let mut nvsmi_output = stdout.lines().next().unwrap().split(", ").collect_vec();
-
-    // let mut temperature: f32 = nvsmi_output[0].parse().unwrap();
-    // let mut power_usage: f32 = nvsmi_output[1]
-    //     .split_ascii_whitespace()
-    //     .next()
-    //     .unwrap()
-    //     .parse()
-    //     .unwrap();
-    // let mut memory_total: f32 = nvsmi_output[2]
-    //     .split_ascii_whitespace()
-    //     .next()
-    //     .unwrap()
-    //     .parse()
-    //     .unwrap();
-    // let mut memory_used: f32 = nvsmi_output[3]
-    //     .split_ascii_whitespace()
-    //     .next()
-    //     .unwrap()
-    //     .parse()
-    //     .unwrap();
-    // let mut memory_free: f32 = nvsmi_output[4]
-    //     .split_ascii_whitespace()
-    //     .next()
-    //     .unwrap()
-    //     .parse()
-    //     .unwrap();
-    // let mut utilization: f32 = nvsmi_output[5]
-    //     .split_ascii_whitespace()
-    //     .next()
-    //     .unwrap()
-    //     .parse()
-    //     .unwrap();
-    // let mut clock_mhz: f32 = nvsmi_output[6]
-    //     .split_ascii_whitespace()
-    //     .next()
-    //     .unwrap()
-    //     .parse()
-    //     .unwrap();
-    // let mut fan_percentage: f32 = nvsmi_output[7]
-    //     .split_ascii_whitespace()
-    //     .next()
-    //     .unwrap()
-    //     .parse()
-    //     .unwrap();
-    // let mut power_limit: f32 = nvsmi_output[8]
-    //     .split_ascii_whitespace()
-    //     .next()
-    //     .unwrap()
-    //     .parse()
-    //     .unwrap();
-    // let mut max_clock: f32 = nvsmi_output[9]
-    //     .split_ascii_whitespace()
-    //     .next()
-    //     .unwrap()
-    //     .parse()
-    //     .unwrap();
-
-    // let g = GpuData {
-    //     utilization,
-    //     temperature,
-    //     memory_free,
-    //     memory_used,
-    //     memory_total,
-    //     power_usage,
-    //     power_limit,
-    //     fan_percentage,
-    //     clock_mhz,
-    //     max_clock,
-    // };
-
-    // loop {
-    //     let Some(line) = lines.next() else {
-    //         break;
-    //     };
-
-    //     if line == "    FB Memory Usage" {
-    //         let l = lines.next().unwrap();
-    //         memory_total = l[44..l.len()].to_string();
-    //         let l = lines.next().unwrap();
-    //         // _reserved = &l[44..l.len()].to_string();
-    //         let l = lines.next().unwrap();
-    //         memory_used = l[44..l.len()].to_string();
-    //         let l = lines.next().unwrap();
-    //         memory_free = l[44..l.len()].to_string();
-    //     }
-    //     if line == "    Utilization" {
-    //         let l = lines.next().unwrap();
-    //         utilization = l[44..l.len()].to_string();
-    //     }
-    //     if line == "    Temperature" {
-    //         let l = lines.next().unwrap();
-    //         temperature = l[44..l.len()].to_string();
-    //     }
-    //     if line == "    GPU Power Readings" {
-    //         let l = lines.next().unwrap();
-    //         power_usage = l[44..l.len()].to_string();
-    //         let l = lines.next().unwrap();
-    //         power_limit = l[44..l.len()].to_string();
-    //     }
-    // }
-
-    // dbg!(&utilization);
-    // dbg!(&temperature);
-    // dbg!(&fan_percentage);
-    // dbg!(&power_usage);
-    // dbg!(&memory_free);
-    // dbg!(&memory_used);
-    // dbg!(&memory_total);
-    // dbg!(&clock_mhz);
-    // dbg!(&power_limit);
-    // dbg!(&max_clock);
-    // dbg!(&g);
 
     if let Some(g) = &appdata.gpu {
         let l = g.lock().unwrap();
@@ -364,129 +206,64 @@ pub fn refresh_gpu(appdata: &mut MyApp) {
         appdata.gpu_temp_buffer.add((gpu.temperature) as f64);
     }
 
-    // appdata.gpu = Some(g);
     step_timing(appdata, CurrentStep::UpdateGPU);
-
-    // panic!();
-
-    // if let Some(gpu) = appdata.nvid_info.as_ref() {
-    //     let mut text = String::new();
-    //     timing_to_str(appdata.current_frame_start, &mut text, perf_trace); // , 96
-
-    //     let mut utilization = 0.0;
-    //     let mut temperature = 0.0;
-    //     let mut fan_percentage = 0.0;
-    //     let mut power_usage = 0.0;
-    //     let mut memory_free = 0.0;
-    //     let mut memory_used = 0.0;
-    //     let mut memory_total = 0.0;
-    //     let mut clock_mhz = 0.0;
-
-    //     let power_limit;
-    //     let max_clock;
-    //     if let Some(gpu) = &appdata.gpu {
-    //         power_limit = gpu.power_limit;
-    //         max_clock = gpu.max_clock;
-    //     } else {
-    //         let gpu = gpu.device_by_index(0).unwrap();
-    //         power_limit = gpu.enforced_power_limit().unwrap() as f32 / 1000.0;
-    //         max_clock = gpu.max_clock_info(Clock::Graphics).unwrap_or_default() as f32;
-    //     }
-    //     timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
-
-    //     let ohw = appdata.ohw_info.lock();
-    //     let n = ohw.select("#0|+images_icon/nvidia.png");
-    //     if let Some(n) = n {
-    //         timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
-
-    //         temperature = n.parse_value_path_def("Temperatures|#0");
-    //         timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
-
-    //         power_usage = n.parse_value_path_def("Powers|#0");
-    //         timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
-
-    //         memory_free = n.parse_value_path_def::<f32>("Data|#0") * 1024.0 * 1024.0;
-    //         timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
-
-    //         memory_used = n.parse_value_path_def::<f32>("Data|#1") * 1024.0 * 1024.0;
-    //         timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
-
-    //         memory_total = n.parse_value_path_def::<f32>("Data|#2") * 1024.0 * 1024.0;
-    //         timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
-
-    //         fan_percentage = n.parse_value_path_def("Controls|#0");
-    //         timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
-
-    //         utilization = n.parse_value_path_def("Load|#0");
-    //         timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
-
-    //         clock_mhz = n.parse_value_path_def("Clocks|#0");
-    //         timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
-    //     };
-    //     drop(ohw);
-
-    //     let g = GpuData {
-    //         utilization,
-    //         temperature,
-    //         memory_free,
-    //         memory_used,
-    //         memory_total,
-    //         power_usage,
-    //         power_limit,
-    //         fan_percentage,
-    //         clock_mhz,
-    //         max_clock,
-    //     };
-    //     timing_to_str(appdata.current_frame_start, &mut text, perf_trace);
-
-    //     appdata.gpu_buffer.add(g.utilization);
-    //     appdata
-    //         .gpu_mem_buffer
-    //         .add((g.memory_used / g.memory_total) as f64);
-    //     appdata
-    //         .gpu_power_buffer
-    //         .add((g.power_usage / g.power_limit) as f64);
-    //     appdata.gpu_temp_buffer.add((g.temperature) as f64);
-
-    //     if perf_trace && appdata.framecount < 1000 {
-    //         println!("{text}");
-    //     }
-    //     appdata.gpu = Some(g);
-    //     step_timing(appdata, CurrentStep::UpdateGPU);
-    // }
 }
 
 // FIX
 
 fn show_processes(appdata: &mut MyApp, ui: &mut Ui) {
     ui.vertical_centered(|ui| ui.label("Processes"));
+
+    let p = appdata
+        .system_status
+        .processes()
+        .iter()
+        .map(|a| Process {
+            cpu: a.1.cpu_usage(),
+            memory: a.1.memory(),
+            name: a.1.name().to_str().unwrap_or_default().to_string(),
+            pid: a.1.pid(),
+            parent: a.1.parent(),
+        })
+        .collect_vec();
+
     // By CPU
-    // let mut p = appdata.processes.clone();
+    let mut cpu_p = p.clone();
+    cpu_p.sort_unstable_by(|a, b| b.cpu.total_cmp(&a.cpu));
+    let cpu_count = appdata.system_status.cpus().len();
+    add_process_table(
+        ui,
+        5,
+        &cpu_p,
+        "Proc CPU",
+        ProcessTableDisplayMode::Cpu,
+        cpu_count,
+    );
+    step_timing(appdata, crate::CurrentStep::ProcCPU);
 
-    // p.sort_unstable_by(|a, b| b.cpu.total_cmp(&a.cpu));
-    // let cpu_count = appdata.system_status.cpus().len();
-    // add_process_table(
-    //     ui,
-    //     5,
-    //     &p,
-    //     "Proc CPU",
-    //     ProcessTableDisplayMode::Cpu,
-    //     cpu_count,
-    // );
-    // step_timing(appdata, crate::CurrentStep::ProcCPU);
+    // By Memory
 
-    // // By Memory
-    // // let mut p = appdata.processes.clone();
-    // p.sort_unstable_by(|a, b| b.memory.cmp(&a.memory));
-    // add_process_table(
-    //     ui,
-    //     5,
-    //     &p,
-    //     "Proc Ram",
-    //     ProcessTableDisplayMode::Ram,
-    //     cpu_count,
-    // );
-    // step_timing(appdata, crate::CurrentStep::ProcRAM);
+    // FIXME: Ordnen und gruppieren nach Parent
+    // 1 systemd -> 1243 systemd -> reelle apps
+    // für alle Enkel von 1:
+    // alle Kinder zusammenrechnen?
+    let mut mem_p = p.clone();
+    mem_p.sort_unstable_by(|a, b| b.memory.cmp(&a.memory));
+    add_process_table(
+        ui,
+        5,
+        &mem_p,
+        "Proc Ram",
+        ProcessTableDisplayMode::Ram,
+        cpu_count,
+    );
+
+    // for p in &mem_p {
+    //     println!("{p}");
+    // }
+    // panic!();
+
+    step_timing(appdata, crate::CurrentStep::ProcRAM);
 }
 
 fn show_ping(appdata: &mut MyApp, ui: &mut Ui) {
@@ -783,12 +560,25 @@ enum ProcessTableDisplayMode {
     Ram,
 }
 
-// FIX
+#[derive(Clone, Debug)]
 struct Process {
+    cpu: f32,
+    memory: u64,
     name: String,
-    count: usize,
-    memory: usize,
-    cpu: usize,
+    pid: Pid,
+    parent: Option<Pid>,
+}
+
+// Implement `Display` for `MinMax`.
+impl fmt::Display for Process {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // Use `self.number` to refer to each positional data point.
+        write!(
+            f,
+            "{}, {}, {}, {}, {:?}",
+            self.pid, self.name, self.cpu, self.memory, self.parent
+        )
+    }
 }
 
 fn add_process_table(
@@ -801,131 +591,134 @@ fn add_process_table(
 ) {
     let mut clicked = false;
     ui.push_id(name, |ui| {
-        // let mut table = TableBuilder::new(ui).striped(true).column(Column::exact(
-        //     (SIDEBAR_WIDTH - 10.0)
-        //         * if display_mode == ProcessTableDisplayMode::All {
-        //             0.4
-        //         } else {
-        //             0.63
-        //         },
-        // ));
-        // if display_mode == ProcessTableDisplayMode::All
-        //     || display_mode == ProcessTableDisplayMode::Ram
-        // {
-        //     table = table.column(Column::exact((SIDEBAR_WIDTH - 10.0) * 0.3))
-        // };
-        // if display_mode == ProcessTableDisplayMode::All
-        //     || display_mode == ProcessTableDisplayMode::Cpu
-        // {
-        //     table = table.column(Column::exact((SIDEBAR_WIDTH - 10.0) * 0.3))
-        // };
-        // let table = table.header(10.0, |mut header| {
-        //     header.col(|ui| {
-        //         clicked = clicked
-        //             || ui
-        //                 .add(Label::new(RichText::new(name).small()).wrap(false))
-        //                 .interact(Sense::click())
-        //                 .double_clicked();
-        //     });
-        //     if display_mode == ProcessTableDisplayMode::All
-        //         || display_mode == ProcessTableDisplayMode::Ram
-        //     {
-        //         header.col(|ui| {
-        //             ui.with_layout(Layout::top_down_justified(Max), |ui| {
-        //                 clicked = clicked
-        //                     || ui
-        //                         .add(Label::new(RichText::new("RAM").small()).wrap(false))
-        //                         .interact(Sense::click())
-        //                         .double_clicked();
-        //             });
-        //         });
-        //     }
-        //     if display_mode == ProcessTableDisplayMode::All
-        //         || display_mode == ProcessTableDisplayMode::Cpu
-        //     {
-        //         header.col(|ui| {
-        //             ui.with_layout(Layout::top_down_justified(Max), |ui| {
-        //                 clicked = clicked
-        //                     || ui
-        //                         .add(Label::new(RichText::new("CPU").small()).wrap(false))
-        //                         .interact(Sense::click())
-        //                         .double_clicked();
-        //             });
-        //         });
-        //     }
-        // });
-        // table.body(|body| {
-        //     body.rows(10.0, len, |row_index, mut row| {
-        //         if row_index < p.len() {
-        //             let p = &p[row_index];
-        //             row.col(|ui| {
-        //                 clicked = clicked
-        //                     || ui
-        //                         .add(
-        //                             Label::new(
-        //                                 RichText::new(format!(
-        //                                     "{}{}",
-        //                                     p.name,
-        //                                     if p.count > 1 {
-        //                                         format!(" ×{}", p.count)
-        //                                     } else {
-        //                                         "".to_string()
-        //                                     }
-        //                                 ))
-        //                                 .small()
-        //                                 .strong(),
-        //                             )
-        //                             .wrap(false),
-        //                         )
-        //                         .interact(Sense::click())
-        //                         .double_clicked();
-        //             });
-        //             if display_mode == ProcessTableDisplayMode::All
-        //                 || display_mode == ProcessTableDisplayMode::Ram
-        //             {
-        //                 row.col(|ui| {
-        //                     ui.with_layout(Layout::top_down_justified(Max), |ui| {
-        //                         clicked = clicked
-        //                             || ui
-        //                                 .add(
-        //                                     Label::new(
-        //                                         RichText::new(format_bytes(p.memory as f64))
-        //                                             .small()
-        //                                             .strong(),
-        //                                     )
-        //                                     .wrap(false),
-        //                                 )
-        //                                 .interact(Sense::click())
-        //                                 .double_clicked()
-        //                     });
-        //                 });
-        //             }
-        //             if display_mode == ProcessTableDisplayMode::All
-        //                 || display_mode == ProcessTableDisplayMode::Cpu
-        //             {
-        //                 row.col(|ui| {
-        //                     ui.with_layout(Layout::top_down_justified(Max), |ui| {
-        //                         clicked = clicked
-        //                             || ui
-        //                                 .add(
-        //                                     Label::new(
-        //                                         RichText::new(format!(
-        //                                             "{:.1}%",
-        //                                             p.cpu as f32 / core_count as f32
-        //                                         ))
-        //                                         .small()
-        //                                         .strong(),
-        //                                     )
-        //                                     .wrap(false),
-        //                                 )
-        //                                 .interact(Sense::click())
-        //                                 .double_clicked();
-        //                     });
-        //                 });
-        //             }
-        //         }
-        //     });
-        // });
+        let mut table = TableBuilder::new(ui).striped(true).column(Column::exact(
+            (SIDEBAR_WIDTH - 10.0)
+                * if display_mode == ProcessTableDisplayMode::All {
+                    0.4
+                } else {
+                    0.63
+                },
+        ));
+        if display_mode == ProcessTableDisplayMode::All
+            || display_mode == ProcessTableDisplayMode::Ram
+        {
+            table = table.column(Column::exact((SIDEBAR_WIDTH - 10.0) * 0.3))
+        };
+        if display_mode == ProcessTableDisplayMode::All
+            || display_mode == ProcessTableDisplayMode::Cpu
+        {
+            table = table.column(Column::exact((SIDEBAR_WIDTH - 10.0) * 0.3))
+        };
+        let table = table.header(10.0, |mut header| {
+            header.col(|ui| {
+                clicked = clicked
+                    || ui
+                        .add(Label::new(RichText::new(name).small()).wrap())
+                        .interact(Sense::click())
+                        .double_clicked();
+            });
+            if display_mode == ProcessTableDisplayMode::All
+                || display_mode == ProcessTableDisplayMode::Ram
+            {
+                header.col(|ui| {
+                    ui.with_layout(Layout::top_down_justified(Max), |ui| {
+                        clicked = clicked
+                            || ui
+                                .add(Label::new(RichText::new("RAM").small()).wrap())
+                                .interact(Sense::click())
+                                .double_clicked();
+                    });
+                });
+            }
+            if display_mode == ProcessTableDisplayMode::All
+                || display_mode == ProcessTableDisplayMode::Cpu
+            {
+                header.col(|ui| {
+                    ui.with_layout(Layout::top_down_justified(Max), |ui| {
+                        clicked = clicked
+                            || ui
+                                .add(Label::new(RichText::new("CPU").small()).wrap())
+                                .interact(Sense::click())
+                                .double_clicked();
+                    });
+                });
+            }
+        });
+        table.body(|body| {
+            body.rows(10.0, len, |mut row| {
+                let row_index = row.index();
+                if row_index < p.len() {
+                    let p = &p[row_index];
+                    row.col(|ui| {
+                        clicked = clicked
+                            || ui
+                                .add(
+                                    Label::new(
+                                        RichText::new(format!(
+                                            "{}{}",
+                                            p.name,
+                                            0 // FIXME
+
+                                              // if p.count > 1 {
+                                              //     format!(" ×{}", p.count)
+                                              // } else {
+                                              //     "".to_string()
+                                              // }
+                                        ))
+                                        .small()
+                                        .strong(),
+                                    )
+                                    .wrap(),
+                                )
+                                .interact(Sense::click())
+                                .double_clicked();
+                    });
+                    if display_mode == ProcessTableDisplayMode::All
+                        || display_mode == ProcessTableDisplayMode::Ram
+                    {
+                        row.col(|ui| {
+                            ui.with_layout(Layout::top_down_justified(Max), |ui| {
+                                clicked = clicked
+                                    || ui
+                                        .add(
+                                            Label::new(
+                                                RichText::new(format_bytes(p.memory as f64))
+                                                    .small()
+                                                    .strong(),
+                                            )
+                                            .wrap(),
+                                        )
+                                        .interact(Sense::click())
+                                        .double_clicked()
+                            });
+                        });
+                    }
+                    if display_mode == ProcessTableDisplayMode::All
+                        || display_mode == ProcessTableDisplayMode::Cpu
+                    {
+                        row.col(|ui| {
+                            ui.with_layout(Layout::top_down_justified(Max), |ui| {
+                                clicked = clicked
+                                    || ui
+                                        .add(
+                                            Label::new(
+                                                RichText::new(format!(
+                                                    "{:.1}%",
+                                                    p.cpu as f32 / core_count as f32
+                                                ))
+                                                .small()
+                                                .strong(),
+                                            )
+                                            .wrap(),
+                                        )
+                                        .interact(Sense::click())
+                                        .double_clicked();
+                            });
+                        });
+                    }
+                }
+            });
+        });
     });
     ui.separator();
 
@@ -1183,7 +976,9 @@ pub fn refresh(appdata: &mut MyApp) {
 }
 
 fn refresh_processes(appdata: &mut MyApp) {
-    // appdata.processes = get_pdh_process_data(&appdata.process_metric_handles);
+    appdata
+        .system_status
+        .refresh_processes(sysinfo::ProcessesToUpdate::All, true);
 }
 
 pub fn refresh_color(appdata: &mut MyApp, ui: &mut Ui) {
