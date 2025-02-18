@@ -26,17 +26,24 @@ use chrono::{Local, Timelike};
 use eframe::{
     egui::{
         // plot::{Line, Plot, PlotPoints},
+        style,
+        vec2,
         Grid,
         Label,
         Layout,
+        Margin,
+        Rect,
         RichText,
         Sense,
+        Stroke,
         Ui,
+        Vec2,
     },
     emath::Align::{self, Max},
-    epaint::{Color32, Vec2},
+    epaint::Color32,
 };
 use egui_extras::{Column, TableBuilder};
+use egui_plot::{Line, Plot, PlotPoints};
 use itertools::Itertools;
 // use nvml_wrapper::enum_wrappers::device::{Clock, ClockId, TemperatureSensor};
 use sysinfo::{CpuRefreshKind, Pid};
@@ -387,17 +394,16 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
         .spacing([2.0, 2.0])
         .striped(true)
         .show(ui, |ui| {
-            for (i, cpu_chunk) in appdata.system_status.cpus().chunks(2).enumerate() {
+            for (_i, cpu_chunk) in appdata.system_status.cpus().chunks(2).enumerate() {
                 for cpu in cpu_chunk {
-                    let temp = appdata.coretemps.get(i).map(|o| o.1).unwrap_or_default();
+                    // let temp = appdata.coretemps.get(i).map(|o| o.1).unwrap_or_default();
                     let usage = cpu.cpu_usage();
                     ui.add(
                         EdgyProgressBar::new(usage / 100.0)
                             .desired_width(SIDEBAR_WIDTH / 2.0 - 5.0)
                             .text(
-                                RichText::new(format!("{usage:.0}% {temp:.0} °C"))
-                                    .small()
-                                    .strong(),
+                                // RichText::new(format!("{usage:.0}% {temp:.0} °C"))
+                                RichText::new(format!("{usage:.0}%")).small().strong(),
                             ),
                     );
                 }
@@ -405,38 +411,38 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
             }
         });
 
-    // let cpu_line = Line::new(
-    //     (0..appdata.cpu_buffer.capacity())
-    //         .map(|i| [i as f64, { cpu[i] as f64 }])
-    //         .collect::<PlotPoints>(),
-    // );
+    let cpu_line = Line::new(
+        (0..appdata.cpu_buffer.capacity())
+            .map(|i| [i as f64, { cpu[i] as f64 }])
+            .collect::<PlotPoints>(),
+    );
 
-    // let ram = appdata.ram_buffer.read();
-    // let ram_line = Line::new(
-    //     (0..appdata.ram_buffer.capacity())
-    //         .map(|i| [i as f64, { ram[i] as f64 * 100.0 }])
-    //         .collect::<PlotPoints>(),
-    // );
+    let ram = appdata.ram_buffer.read();
+    let ram_line = Line::new(
+        (0..appdata.ram_buffer.capacity())
+            .map(|i| [i as f64, { ram[i] as f64 * 100.0 }])
+            .collect::<PlotPoints>(),
+    );
 
-    // let power_line = Line::new(
-    //     (0..appdata.cpu_power_buffer.capacity())
-    //         .map(|i| [i as f64, { (power[i] / max_power) * 100.0 }])
-    //         .collect::<PlotPoints>(),
-    // );
+    let power_line = Line::new(
+        (0..appdata.cpu_power_buffer.capacity())
+            .map(|i| [i as f64, { (power[i] / max_power) * 100.0 }])
+            .collect::<PlotPoints>(),
+    );
 
-    // let temp_line = Line::new(
-    //     (0..appdata.cpu_maxtemp_buffer.capacity())
-    //         .map(|i| [i as f64, { max_temp_line[i] as f64 }])
-    //         .collect::<PlotPoints>(),
-    // );
+    let temp_line = Line::new(
+        (0..appdata.cpu_maxtemp_buffer.capacity())
+            .map(|i| [i as f64, { maxtemp[i] as f64 }])
+            .collect::<PlotPoints>(),
+    );
 
-    // step_timing(appdata, crate::CurrentStep::CPU);
-    // add_graph(
-    //     "cpu",
-    //     ui,
-    //     vec![cpu_line, ram_line, power_line, temp_line],
-    //     &[100.5],
-    // );
+    step_timing(appdata, crate::CurrentStep::CPU);
+    add_graph(
+        "cpu",
+        ui,
+        vec![cpu_line, ram_line, power_line, temp_line],
+        &[100.5],
+    );
     step_timing(appdata, crate::CurrentStep::CPUGraph);
 
     ui.separator();
@@ -514,40 +520,40 @@ fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
             ),
         );
 
-        // let gpu_buf = appdata.gpu_buffer.read();
-        // let gpu_line = Line::new(
-        //     (0..appdata.gpu_buffer.capacity())
-        //         .map(|i| [i as f64, { gpu_buf[i] }])
-        //         .collect::<PlotPoints>(),
-        // );
+        let gpu_buf = appdata.gpu_buffer.read();
+        let gpu_line = Line::new(
+            (0..appdata.gpu_buffer.capacity())
+                .map(|i| [i as f64, { gpu_buf[i] as f64 }])
+                .collect::<PlotPoints>(),
+        );
 
-        // let mem_buf = appdata.gpu_mem_buffer.read();
-        // let mem_line = Line::new(
-        //     (0..appdata.gpu_mem_buffer.capacity())
-        //         .map(|i| [i as f64, { mem_buf[i] * 100.0 }])
-        //         .collect::<PlotPoints>(),
-        // );
+        let mem_buf = appdata.gpu_mem_buffer.read();
+        let mem_line = Line::new(
+            (0..appdata.gpu_mem_buffer.capacity())
+                .map(|i| [i as f64, { mem_buf[i] * 100.0 }])
+                .collect::<PlotPoints>(),
+        );
 
-        // let temp_buf = appdata.gpu_temp_buffer.read();
-        // let temp_line = Line::new(
-        //     (0..appdata.gpu_temp_buffer.capacity())
-        //         .map(|i| [i as f64, { temp_buf[i] }])
-        //         .collect::<PlotPoints>(),
-        // );
+        let temp_buf = appdata.gpu_temp_buffer.read();
+        let temp_line = Line::new(
+            (0..appdata.gpu_temp_buffer.capacity())
+                .map(|i| [i as f64, { temp_buf[i] }])
+                .collect::<PlotPoints>(),
+        );
 
-        // let pow_buf = appdata.gpu_power_buffer.read();
-        // let pow_line = Line::new(
-        //     (0..appdata.gpu_power_buffer.capacity())
-        //         .map(|i| [i as f64, { pow_buf[i] * 100.0 }])
-        //         .collect::<PlotPoints>(),
-        // );
+        let pow_buf = appdata.gpu_power_buffer.read();
+        let pow_line = Line::new(
+            (0..appdata.gpu_power_buffer.capacity())
+                .map(|i| [i as f64, { pow_buf[i] * 100.0 }])
+                .collect::<PlotPoints>(),
+        );
 
-        // add_graph(
-        //     "gpu",
-        //     ui,
-        //     vec![gpu_line, mem_line, pow_line, temp_line],
-        //     &[100.0],
-        // );
+        add_graph(
+            "gpu",
+            ui,
+            vec![gpu_line, mem_line, pow_line, temp_line],
+            &[100.0],
+        );
 
         ui.separator();
     }
@@ -733,31 +739,153 @@ fn add_process_table(
     }
 }
 
-// fn add_graph(id: &str, ui: &mut Ui, line: Vec<Line>, max_y: &[f64]) {
-//     // let mut p = Plot::new(id)
-//     //     .show_axes([true, true])
-//     //     .label_formatter(|_, _| "".to_string())
-//     //     .allow_drag(false)
-//     //     .allow_zoom(false)
-//     //     .allow_scroll(false)
-//     //     .allow_boxed_zoom(false)
-//     //     .allow_double_click_reset(false)
-//     //     .show_x(false)
-//     //     .show_y(false)
-//     //     .x_axis_formatter(|_, _| String::new())
-//     //     .y_axis_formatter(|_, _| String::new())
-//     //     .width(SIDEBAR_WIDTH - 7.0)
-//     //     .height(30.0)
-//     //     .include_y(0.0);
-//     // for y in max_y {
-//     //     p = p.include_y(*y);
-//     // }
-//     // p.set_margin_fraction(Vec2::ZERO).show(ui, |plot_ui| {
-//     //     for l in line {
-//     //         plot_ui.line(l)
-//     //     }
-//     // });
-// }
+fn add_graph(id: &str, ui: &mut Ui, line: Vec<Line>, max_y: &[f64]) {
+    // let desired_size = vec2(SIDEBAR_WIDTH - 7.0, 30.0);
+    // let desired_position = ui.min_rect().min; // Starting at top-left corner
+
+    // let rect = Rect::from_min_size(desired_position, desired_size);
+
+    // // Draw a background to visualize the allocated space
+    // ui.painter().rect_filled(rect, 0.0, Color32::LIGHT_BLUE);
+
+    // ui.allocate_ui_at_rect(rect, |ui| {
+    //     let mut plot = Plot::new(id)
+    //         // Your plot configuration
+    //         .set_margin_fraction(vec2(0.0, 0.0));
+
+    //     for y in max_y {
+    //         plot = plot.include_y(*y);
+    //     }
+
+    //     plot.show(ui, |plot_ui| {
+    //         for l in line {
+    //             plot_ui.line(l);
+    //         }
+    //     });
+    // });
+
+    // let desired_size = egui::vec2(SIDEBAR_WIDTH - 7.0, 30.0);
+    // let desired_position = ui.min_rect().min; // Starting at top-left corner
+
+    // let rect = egui::Rect::from_min_size(desired_position, desired_size);
+
+    // // Draw a background to visualize the allocated space
+    // ui.painter().rect_filled(rect, 0.0, egui::Color32::LIGHT_BLUE);
+
+    // ui.allocate_ui_at_rect(rect, |ui| {
+    // let mut plot = Plot::new(id)
+    //     // Your plot configuration
+    //     .set_margin_fraction(vec2(0.0, 0.0));
+
+    // for y in max_y {
+    //     plot = plot.include_y(*y);
+    // }
+
+    // plot.show(ui, |plot_ui| {
+    //     for l in line {
+    //         plot_ui.line(l);
+    //     }
+    // });
+
+    //     // let desired_size = vec2(130.0, 30.0);
+    // // let rect = Rect::from_min_size(ui.min_rect().min, desired_size);
+
+    // // ui.painter().rect_filled(rect, 0.0, Color32::YELLOW);
+    // let desired_size = vec2(SIDEBAR_WIDTH - 7.0 * 1.6, 30.0 * 1.6);
+    // let (rect, _) = ui.allocate_exact_size(desired_size, Sense::hover());
+
+    // ui.allocate_ui_at_rect(rect, |iui| {
+    //     let mut p = Plot::new(id)
+    //         // .show_axes([true, true])
+    //         // .label_formatter(|_, _| "".to_string())
+    //         // .allow_drag(false)
+    //         // .allow_zoom(false)
+    //         // .allow_scroll(false)
+    //         // .allow_boxed_zoom(false)
+    //         // .allow_double_click_reset(false)
+    //         // .show_x(false)
+    //         // .show_y(false)
+    //         // .x_axis_formatter(|_, _| String::new())
+    //         // .y_axis_formatter(|_, _| String::new())
+    //         // .min_size(desired_size)
+    //         // .set_margin_fraction((0.0, 0.0).into())
+    //         // .width(desired_size.x)
+    //         // .height(desired_size.y)
+    //         // .include_y(0.0)
+    //         ;
+
+    //     // for y in max_y {
+    //     //     p = p.include_y(*y);
+    //     // }
+
+    //     p.show(iui, |plot_ui| {
+    //         // iui.painter().rect_stroke(
+    //         //     plot_ui.ctx().available_rect(),
+    //         //     0.0,
+    //         //     Stroke::new(1.0, Color32::GREEN),
+    //         //     eframe::egui::StrokeKind::Inside,
+    //         // );
+    //         // for l in line {
+    //         //     plot_ui.line(l)
+    //         // }
+    //     });
+    // });
+
+    let desired_size = vec2(SIDEBAR_WIDTH - 7.0 * 1.6, 30.0 * 1.6);
+
+    let layout = Layout::top_down(Align::Min);
+
+    ui.with_layout(layout, |ui| {
+        // Temporarily set spacing to zero
+        ui.spacing_mut().item_spacing = Vec2::ZERO;
+        ui.spacing_mut().window_margin = Margin::ZERO;
+        ui.spacing_mut().button_padding = Vec2::ZERO;
+        ui.spacing_mut().indent = 0.0;
+
+        let (rect, _) = ui.allocate_exact_size(desired_size, Sense::hover());
+        // ui.painter().rect_stroke(
+        //     rect,
+        //     0.0,
+        //     Stroke::new(1.0, Color32::RED),
+        //     eframe::egui::StrokeKind::Inside,
+        // );
+        let mut child_ui = ui.child_ui(rect, *ui.layout(), None);
+
+        let mut p = Plot::new(id)
+            .show_axes([true, true])
+            .label_formatter(|_, _| "".to_string())
+            .allow_drag(false)
+            .allow_zoom(false)
+            .allow_scroll(false)
+            .allow_boxed_zoom(false)
+            .allow_double_click_reset(false)
+            .show_x(false)
+            .show_y(false)
+            .x_axis_formatter(|_, _| String::new())
+            .y_axis_formatter(|_, _| String::new())
+            .min_size(desired_size)
+            .set_margin_fraction((0.0, 0.0).into())
+            .width(desired_size.x)
+            .height(desired_size.y)
+            .include_y(0.0);
+
+        for y in max_y {
+            p = p.include_y(*y);
+        }
+
+        p.show(&mut child_ui, |plot_ui| {
+            // ui.painter().rect_stroke(
+            //     plot_ui.ctx().available_rect(),
+            //     0.0,
+            //     Stroke::new(1.0, Color32::GREEN),
+            //     eframe::egui::StrokeKind::Inside,
+            // );
+            for l in line {
+                plot_ui.line(l)
+            }
+        });
+    });
+}
 
 fn show_drives(appdata: &MyApp, ui: &mut Ui) {
     ui.vertical_centered(|ui| ui.label("Drives"));
@@ -777,6 +905,7 @@ fn show_drives(appdata: &MyApp, ui: &mut Ui) {
                 .enumerate()
             {
                 ui.spacing_mut().interact_size = [15.0, 12.0].into();
+
                 let replace = d.mount_point().to_str().unwrap().replace('\\', "");
                 let collect_vec = replace.split("/").collect_vec();
                 let mount = collect_vec.last().unwrap();
@@ -802,25 +931,25 @@ fn show_drives(appdata: &MyApp, ui: &mut Ui) {
                     .small()
                     .strong(),
                 ));
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    ui.add(
-                        EdgyProgressBar::new(
-                            (d.total_space() - d.available_space()) as f32 / d.total_space() as f32,
-                        )
-                        .desired_width(
-                            appdata.settings.lock().current_settings.location.width * 0.55,
-                        )
-                        .text(
-                            RichText::new(format!(
-                                "Free: {}",
-                                format_bytes(d.available_space() as f64),
-                            ))
-                            .small()
-                            .strong(),
-                        )
-                        .fill(auto_color_dark(i as i32)),
-                    );
-                });
+
+                // ui.add_space(5.0);
+                // ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.add(
+                    EdgyProgressBar::new(
+                        (d.total_space() - d.available_space()) as f32 / d.total_space() as f32,
+                    )
+                    .desired_width(appdata.settings.lock().current_settings.location.width * 0.55)
+                    .text(
+                        RichText::new(format!(
+                            "Free: {}",
+                            format_bytes(d.available_space() as f64),
+                        ))
+                        .small()
+                        .strong(),
+                    )
+                    .fill(auto_color_dark(i as i32)),
+                );
+                // });
                 ui.end_row();
             }
         });

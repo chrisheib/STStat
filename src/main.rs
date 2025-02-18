@@ -55,7 +55,7 @@ mod system_info;
 // On read problems, run: lodctr /r
 pub const UPDATE_INTERVAL_MILLIS: i64 = 1000;
 pub const INTERNAL_WINDOW_TITLE: &str = "RS_Sidebar";
-pub const SIDEBAR_WIDTH: f32 = 130.0;
+pub const SIDEBAR_WIDTH: f32 = 110.0;
 
 fn main() -> Result<(), eframe::Error> {
     color_eyre::install().unwrap();
@@ -165,7 +165,7 @@ fn main() -> Result<(), eframe::Error> {
     // )
     // .map(|d| d.scale_factor)
     // .unwrap_or(1.0);
-    let initial_window_size = (SIDEBAR_WIDTH, 800.0);
+    let initial_window_size = (SIDEBAR_WIDTH, 950.0);
     // let initial_window_size = (
     //     s.current_settings.location.width,
     //     s.current_settings.location.height * scale + 48.0 * (scale - 1.0),

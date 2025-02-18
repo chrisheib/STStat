@@ -109,9 +109,10 @@ impl Widget for EdgyProgressBar {
             let visuals = ui.style().visuals.clone();
             ui.painter().rect(
                 outer_rect,
-                Rounding::default(),
+                CornerRadius::default(),
                 visuals.extreme_bg_color,
                 Stroke::NONE,
+                StrokeKind::Inside,
             );
             let inner_rect = Rect::from_min_size(
                 outer_rect.min,
@@ -131,11 +132,12 @@ impl Widget for EdgyProgressBar {
 
             ui.painter().rect(
                 inner_rect,
-                Rounding::default(),
+                CornerRadius::default(),
                 Color32::from(
                     Rgba::from(fill.unwrap_or(Color32::from_rgb(0, 83, 116))) * color_factor as f32,
                 ),
                 Stroke::NONE,
+                StrokeKind::Inside,
             );
 
             if let Some(text_kind) = text {
