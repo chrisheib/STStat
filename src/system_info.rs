@@ -740,150 +740,34 @@ fn add_process_table(
 }
 
 fn add_graph(id: &str, ui: &mut Ui, line: Vec<Line>, max_y: &[f64]) {
-    // let desired_size = vec2(SIDEBAR_WIDTH - 7.0, 30.0);
-    // let desired_position = ui.min_rect().min; // Starting at top-left corner
+    let desired_size = vec2(SIDEBAR_WIDTH - 7.0, 30.0);
 
-    // let rect = Rect::from_min_size(desired_position, desired_size);
+    let mut p = Plot::new(id)
+        .show_axes([false, false])
+        .label_formatter(|_, _| "".to_string())
+        .allow_drag(false)
+        .allow_zoom(false)
+        .allow_scroll(false)
+        .allow_boxed_zoom(false)
+        .allow_double_click_reset(false)
+        .show_x(false)
+        .show_y(false)
+        .x_axis_formatter(|_, _| String::new())
+        .y_axis_formatter(|_, _| String::new())
+        .min_size(desired_size)
+        .set_margin_fraction((0.0, 0.0).into())
+        .width(desired_size.x)
+        .height(desired_size.y)
+        .include_y(0.0);
 
-    // // Draw a background to visualize the allocated space
-    // ui.painter().rect_filled(rect, 0.0, Color32::LIGHT_BLUE);
+    for y in max_y {
+        p = p.include_y(*y);
+    }
 
-    // ui.allocate_ui_at_rect(rect, |ui| {
-    //     let mut plot = Plot::new(id)
-    //         // Your plot configuration
-    //         .set_margin_fraction(vec2(0.0, 0.0));
-
-    //     for y in max_y {
-    //         plot = plot.include_y(*y);
-    //     }
-
-    //     plot.show(ui, |plot_ui| {
-    //         for l in line {
-    //             plot_ui.line(l);
-    //         }
-    //     });
-    // });
-
-    // let desired_size = egui::vec2(SIDEBAR_WIDTH - 7.0, 30.0);
-    // let desired_position = ui.min_rect().min; // Starting at top-left corner
-
-    // let rect = egui::Rect::from_min_size(desired_position, desired_size);
-
-    // // Draw a background to visualize the allocated space
-    // ui.painter().rect_filled(rect, 0.0, egui::Color32::LIGHT_BLUE);
-
-    // ui.allocate_ui_at_rect(rect, |ui| {
-    // let mut plot = Plot::new(id)
-    //     // Your plot configuration
-    //     .set_margin_fraction(vec2(0.0, 0.0));
-
-    // for y in max_y {
-    //     plot = plot.include_y(*y);
-    // }
-
-    // plot.show(ui, |plot_ui| {
-    //     for l in line {
-    //         plot_ui.line(l);
-    //     }
-    // });
-
-    //     // let desired_size = vec2(130.0, 30.0);
-    // // let rect = Rect::from_min_size(ui.min_rect().min, desired_size);
-
-    // // ui.painter().rect_filled(rect, 0.0, Color32::YELLOW);
-    // let desired_size = vec2(SIDEBAR_WIDTH - 7.0 * 1.6, 30.0 * 1.6);
-    // let (rect, _) = ui.allocate_exact_size(desired_size, Sense::hover());
-
-    // ui.allocate_ui_at_rect(rect, |iui| {
-    //     let mut p = Plot::new(id)
-    //         // .show_axes([true, true])
-    //         // .label_formatter(|_, _| "".to_string())
-    //         // .allow_drag(false)
-    //         // .allow_zoom(false)
-    //         // .allow_scroll(false)
-    //         // .allow_boxed_zoom(false)
-    //         // .allow_double_click_reset(false)
-    //         // .show_x(false)
-    //         // .show_y(false)
-    //         // .x_axis_formatter(|_, _| String::new())
-    //         // .y_axis_formatter(|_, _| String::new())
-    //         // .min_size(desired_size)
-    //         // .set_margin_fraction((0.0, 0.0).into())
-    //         // .width(desired_size.x)
-    //         // .height(desired_size.y)
-    //         // .include_y(0.0)
-    //         ;
-
-    //     // for y in max_y {
-    //     //     p = p.include_y(*y);
-    //     // }
-
-    //     p.show(iui, |plot_ui| {
-    //         // iui.painter().rect_stroke(
-    //         //     plot_ui.ctx().available_rect(),
-    //         //     0.0,
-    //         //     Stroke::new(1.0, Color32::GREEN),
-    //         //     eframe::egui::StrokeKind::Inside,
-    //         // );
-    //         // for l in line {
-    //         //     plot_ui.line(l)
-    //         // }
-    //     });
-    // });
-
-    let desired_size = vec2(SIDEBAR_WIDTH - 7.0 * 1.6, 30.0 * 1.6);
-
-    let layout = Layout::top_down(Align::Min);
-
-    ui.with_layout(layout, |ui| {
-        // Temporarily set spacing to zero
-        ui.spacing_mut().item_spacing = Vec2::ZERO;
-        ui.spacing_mut().window_margin = Margin::ZERO;
-        ui.spacing_mut().button_padding = Vec2::ZERO;
-        ui.spacing_mut().indent = 0.0;
-
-        let (rect, _) = ui.allocate_exact_size(desired_size, Sense::hover());
-        // ui.painter().rect_stroke(
-        //     rect,
-        //     0.0,
-        //     Stroke::new(1.0, Color32::RED),
-        //     eframe::egui::StrokeKind::Inside,
-        // );
-        let mut child_ui = ui.child_ui(rect, *ui.layout(), None);
-
-        let mut p = Plot::new(id)
-            .show_axes([true, true])
-            .label_formatter(|_, _| "".to_string())
-            .allow_drag(false)
-            .allow_zoom(false)
-            .allow_scroll(false)
-            .allow_boxed_zoom(false)
-            .allow_double_click_reset(false)
-            .show_x(false)
-            .show_y(false)
-            .x_axis_formatter(|_, _| String::new())
-            .y_axis_formatter(|_, _| String::new())
-            .min_size(desired_size)
-            .set_margin_fraction((0.0, 0.0).into())
-            .width(desired_size.x)
-            .height(desired_size.y)
-            .include_y(0.0);
-
-        for y in max_y {
-            p = p.include_y(*y);
+    p.show(ui, |plot_ui| {
+        for l in line {
+            plot_ui.line(l)
         }
-
-        p.show(&mut child_ui, |plot_ui| {
-            // ui.painter().rect_stroke(
-            //     plot_ui.ctx().available_rect(),
-            //     0.0,
-            //     Stroke::new(1.0, Color32::GREEN),
-            //     eframe::egui::StrokeKind::Inside,
-            // );
-            for l in line {
-                plot_ui.line(l)
-            }
-        });
     });
 }
 
