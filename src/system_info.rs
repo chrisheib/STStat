@@ -373,7 +373,8 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
                 .small()
                 .strong(),
             )
-            .fill(auto_color_dark(1)),
+            .fill(auto_color_dark(1))
+            .desired_width(SIDEBAR_WIDTH - 8.0),
     );
     let power = appdata.cpu_power_buffer.read();
     let current_power = power.last().copied().unwrap_or_default();
@@ -386,7 +387,8 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
                     .small()
                     .strong(),
             )
-            .fill(auto_color_dark(2)),
+            .fill(auto_color_dark(2))
+            .desired_width(SIDEBAR_WIDTH - 8.0),
     );
 
     Grid::new("cpu_grid_cores")
@@ -494,7 +496,8 @@ fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
                     .small()
                     .strong(),
                 )
-                .fill(auto_color_dark(1)),
+                .fill(auto_color_dark(1))
+                .desired_width(SIDEBAR_WIDTH - 8.0),
         );
 
         ui.add(
@@ -507,17 +510,20 @@ fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
                     .small()
                     .strong(),
                 )
-                .fill(auto_color_dark(2)),
+                .fill(auto_color_dark(2))
+                .desired_width(SIDEBAR_WIDTH - 8.0),
         );
         ui.add(
-            EdgyProgressBar::new(gpu.clock_mhz / gpu.max_clock.max(0.01)).text(
-                RichText::new(format!(
-                    "Clk: {:.0}MHz / {:.0}MHz",
-                    gpu.clock_mhz, gpu.max_clock
-                ))
-                .small()
-                .strong(),
-            ),
+            EdgyProgressBar::new(gpu.clock_mhz / gpu.max_clock.max(0.01))
+                .text(
+                    RichText::new(format!(
+                        "Clk: {:.0}MHz / {:.0}MHz",
+                        gpu.clock_mhz, gpu.max_clock
+                    ))
+                    .small()
+                    .strong(),
+                )
+                .desired_width(SIDEBAR_WIDTH - 8.0),
         );
 
         let gpu_buf = appdata.gpu_buffer.read();
@@ -674,7 +680,7 @@ fn add_process_table(
                                         .small()
                                         .strong(),
                                     )
-                                    .wrap(),
+                                    .wrap_mode(eframe::egui::TextWrapMode::Truncate),
                                 )
                                 .interact(Sense::click())
                                 .double_clicked();
@@ -728,19 +734,19 @@ fn add_process_table(
     });
     ui.separator();
 
-    if clicked {
-        match Command::new("powershell")
-            .args(["start", "taskmgr", "-v runAs"])
-            .spawn()
-        {
-            Ok(_c) => println!("Starting Task Manager"),
-            Err(e) => println!("{e}"),
-        };
-    }
+    // if clicked {
+    //     match Command::new("powershell")
+    //         .args(["start", "taskmgr", "-v runAs"])
+    //         .spawn()
+    //     {
+    //         Ok(_c) => println!("Starting Task Manager"),
+    //         Err(e) => println!("{e}"),
+    //     };
+    // }
 }
 
 fn add_graph(id: &str, ui: &mut Ui, line: Vec<Line>, max_y: &[f64]) {
-    let desired_size = vec2(SIDEBAR_WIDTH - 7.0, 30.0);
+    let desired_size = vec2(SIDEBAR_WIDTH - 8.0, 30.0);
 
     let mut p = Plot::new(id)
         .show_axes([false, false])
@@ -926,38 +932,6 @@ pub fn get_windows_glass_color(use_plain_blackground: bool) -> Color32 {
 fn darken(v: u8) -> u8 {
     (v as f32 * 0.4) as u8
 }
-
-// FIX
-#[allow(dead_code)]
-pub fn open_performance_browser() {
-    unsafe {
-        // let hwnd = *STATIC_HWND.read().unwrap();
-        // let mut buf: [u16; 10000] = [0; 10000];
-        // let returnpathbuffer = PWSTR::from_raw(&mut buf as *mut u16);
-        // let p = PWSTR::from_raw(w!("hello").as_ptr() as *mut _);
-        // PdhBrowseCountersW(&PDH_BROWSE_DLG_CONFIG_W {
-        //     _bitfield: 0,
-        //     hWndOwner: hwnd,
-        //     szDataSource: PWSTR::null(),
-        //     szReturnPathBuffer: returnpathbuffer,
-        //     cchReturnPathLength: 10000,
-        //     pCallBack: None,
-        //     dwCallBackArg: 0,
-        //     CallBackStatus: 0,
-        //     dwDefaultDetailLevel: PERF_DETAIL_WIZARD,
-        //     szDialogBoxCaption: p,
-        // } as *const PDH_BROWSE_DLG_CONFIG_W);
-
-        // println!("{}", returnpathbuffer.display());
-    }
-}
-
-// fn convert_to_pcwstr(s: &str) -> PCWSTR {
-//     let mut v = s.encode_utf16().collect_vec();
-//     v.push(0);
-//     let p = v.as_ptr();
-//     PCWSTR::from_raw(p)
-// }
 
 pub fn refresh(appdata: &mut MyApp) {
     // refresh windows perfcount stats once

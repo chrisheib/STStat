@@ -10,6 +10,10 @@ Needs [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwa
 ## Linux Caveats
 * To read energy use, the energy_uj system file needs to be readable by others. Add `chmod a+r /sys/class/powercap/intel-rapl:0/energy_uj` to startup scripts.
 
+### KDE install
+* import the window rule
+* add a 130px wide empty panel where the sidebar should go
+
 ## Goals
 * 💻 Provide an overview of your computers ressources.
 * ✅ Focus on stats that provide actual value.
