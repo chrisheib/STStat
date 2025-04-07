@@ -30,9 +30,10 @@ use settings::{show_settings, MySettings};
 // use sidebar::dispose_sidebar;
 use sysinfo::{Disks, Networks, System};
 use system_info::{
-    get_windows_glass_color, init_system, refresh, refresh_color, run_nvidia_smi, GpuData,
+    get_windows_glass_color, init_system, loop_amd_temp_sensor, refresh, refresh_color,
+    run_nvidia_smi, GpuData,
 };
-use tokio::{runtime::Runtime, time::sleep};
+use tokio::{runtime::Runtime, spawn, time::sleep};
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -64,10 +65,10 @@ fn main() -> Result<(), eframe::Error> {
     // let monitors = get_screens_linux();
     // unsafe { PdhOpenQueryA(None, 0, &mut pdh_query_handle) };
 
-    // panic::set_hook(Box::new(|p| {
-    //     println!("Custom panic hook: {p}");
-    //     std::fs::write("error.txt", format!("{p}")).unwrap_or_default();
-    // }));
+    panic::set_hook(Box::new(|p| {
+        println!("Custom panic hook: {p}");
+        std::fs::write("error.txt", format!("{p}")).unwrap_or_default();
+    }));
 
     let settings = Arc::new(Mutex::new(MySettings::load()));
     let cancel_settings = settings.clone();
@@ -106,6 +107,10 @@ fn main() -> Result<(), eframe::Error> {
     let gpu_data = Arc::new(std::sync::Mutex::new(GpuData::default()));
     let thread_gpu = gpu_data.clone();
     thread::spawn(move || run_nvidia_smi(thread_gpu));
+
+    let cpu_temp = Arc::new(std::sync::Mutex::new(None));
+    let thread_cpu_temp = cpu_temp.clone();
+    rt.spawn(loop_amd_temp_sensor(thread_cpu_temp));
 
     let mut appstate = MyApp {
         system_status: System::new_all(),
@@ -152,6 +157,7 @@ fn main() -> Result<(), eframe::Error> {
         last_joules: 0,
         coretemps: vec![],
         // nvml_device: nvml,
+        cpu_temp_thread: cpu_temp,
     };
 
     get_screen_size(&appstate, None);
@@ -372,6 +378,7 @@ pub struct MyApp {
     pub last_joules: u128, // pub monitors: Vec<MyMonitor>,
     pub coretemps: Vec<(String, f32)>,
     // pub nvml_device: Nvml,
+    pub cpu_temp_thread: Arc<std::sync::Mutex<Option<f32>>>,
 }
 
 // #[derive(Serialize, Deserialize, Debug)]

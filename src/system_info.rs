@@ -1022,12 +1022,19 @@ fn refresh_cpu(appdata: &mut MyApp) {
         .cpu_buffer
         .add(appdata.system_status.global_cpu_usage());
 
-    let cpu_temp = &read_to_string("/sys/class/thermal/thermal_zone2/temp")
+    let mut cpu_temp = &read_to_string("/sys/class/thermal/thermal_zone2/temp")
         .unwrap_or_default()
         .trim()
         .parse::<f32>()
         .unwrap_or_default()
         / 1000.0;
+
+    if cpu_temp == 0.0 {
+        // AMD
+        if let Some(temp) = appdata.cpu_temp_thread.lock().unwrap().as_ref() {
+            cpu_temp = *temp;
+        }
+    }
 
     let coretemps = appdata
         .system_status
@@ -1056,7 +1063,7 @@ fn refresh_cpu(appdata: &mut MyApp) {
 
     let timediff = appdata.last_update_timestamp.elapsed().as_millis();
     if timediff > 100 {
-        let pow = (current_power - appdata.last_joules) as f64 / 1_000_000.0;
+        let pow = (current_power.overflowing_sub(appdata.last_joules)).0 as f64 / 1_000_000.0;
         let uj_per_ms = pow / (timediff as f64 / 1000.0); // uj per ms -> j per s -> W
 
         let mut s = appdata.settings.lock();
@@ -1095,6 +1102,29 @@ pub fn refresh_battery(appdata: &mut MyApp) {
             appdata.battery_level_next_update =
                 now + chrono::Duration::seconds(60 - now.time().second() as i64);
         }
+    }
+}
+
+pub async fn loop_amd_temp_sensor(shared_data: Arc<Mutex<Option<f32>>>) {
+    if read_to_string("/sys/class/thermal/thermal_zone2/temp").is_ok() {
+        return;
+    }
+
+    loop {
+        // sensors k10temp-pci-00c3 -j
+        if let Ok(output) = Command::new("sensors").arg("-j").output().await {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+                if let Some(temp) = json["k10temp-pci-00c3"]["Tctl"]["temp1_input"].as_f64() {
+                    let mut data = shared_data.lock().unwrap();
+                    *data = Some(temp as f32);
+                }
+            } else {
+                eprintln!("Failed to execute command");
+            }
+        }
+        thread::sleep(Duration::from_secs(1));
     }
 }
 

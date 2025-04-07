@@ -2,9 +2,15 @@
 Description=STStat
 above=true
 aboverule=2
+layer=overlay
+layerrule=2
 position=2560,0
 positionrule=2
 size=130,1035
 sizerule=2
+skipswitcher=true
+skipswitcherrule=2
+skiptaskbar=true
+skiptaskbarrule=2
 wmclass=ststat
 wmclassmatch=1
