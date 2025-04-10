@@ -37,6 +37,7 @@ impl<T: Clone + Default + Copy + Debug, const N: usize> CircleVec<T, N> {
         }
     }
 
+    /// Read the vector in a circular manner
     pub fn read(&self) -> Vec<T> {
         let inner = self.inner_vec.lock();
         let mut out: Vec<T> = Vec::with_capacity(self.capacity);

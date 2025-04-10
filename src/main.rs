@@ -31,7 +31,7 @@ use settings::{show_settings, MySettings};
 use sysinfo::{Disks, Networks, System};
 use system_info::{
     get_windows_glass_color, init_system, loop_amd_temp_sensor, refresh, refresh_color,
-    run_nvidia_smi, GpuData,
+    run_nvidia_smi, GpuData, MyDiskInfo,
 };
 use tokio::{runtime::Runtime, spawn, time::sleep};
 use winit::{
@@ -120,7 +120,6 @@ fn main() -> Result<(), eframe::Error> {
         next_update: Default::default(),
         next_screen_update: Default::default(),
         windows_performance_query_handle: 0,
-        disk_time_value_handle_map: Default::default(),
         core_time_value_handle_map: Default::default(),
         cpu_buffer: CircleVec::new(),
         cpu_maxtemp_buffer: CircleVec::new(),
@@ -142,7 +141,6 @@ fn main() -> Result<(), eframe::Error> {
         gpu_temp_buffer: CircleVec::new(),
         show_settings: false,
         settings: settings.clone(),
-        disk_buffer: Default::default(),
         // processes: vec![],
         // process_metric_handles: Default::default(),
         update_available,
@@ -152,6 +150,7 @@ fn main() -> Result<(), eframe::Error> {
         battery_level_next_update: Default::default(),
         networks: Networks::new_with_refreshed_list(),
         disks: Disks::new_with_refreshed_list(),
+        disk_data: vec![],
         // monitors,
         last_update_timestamp: Instant::now(),
         last_joules: 0,
@@ -346,7 +345,7 @@ pub struct MyApp {
     pub cpu_power_buffer: Arc<CircleVec<f64, 100>>,
     pub ram_buffer: Arc<CircleVec<f32, 100>>,
     pub windows_performance_query_handle: isize,
-    pub disk_time_value_handle_map: Vec<(String, isize, f64)>,
+    // pub disk_time_value_handle_map: Vec<(String, isize, f64)>,
     pub core_time_value_handle_map: Vec<(usize, isize, f64)>,
     // pub nvid_info: Option<Nvml>,
     pub ohw_info: Arc<Mutex<Option<OHWNode>>>,
@@ -364,7 +363,7 @@ pub struct MyApp {
     pub gpu_temp_buffer: Arc<CircleVec<f64, 100>>,
     pub show_settings: bool,
     pub settings: Arc<Mutex<MySettings>>,
-    pub disk_buffer: HashMap<String, Arc<CircleVec<f64, 100>>>,
+    // pub disk_buffer: HashMap<String, Arc<CircleVec<f64, 100>>>,
     // pub processes: Vec<Process>,
     // pub process_metric_handles: ProcessMetricHandles,
     pub update_available: Arc<AtomicBool>,
@@ -374,6 +373,7 @@ pub struct MyApp {
     pub battery_level_next_update: NaiveDateTime,
     pub networks: Networks,
     pub disks: Disks,
+    pub disk_data: Vec<MyDiskInfo>,
     pub last_update_timestamp: Instant,
     pub last_joules: u128, // pub monitors: Vec<MyMonitor>,
     pub coretemps: Vec<(String, f32)>,

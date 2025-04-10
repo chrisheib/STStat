@@ -1,12 +1,14 @@
 use std::{
     any::Any,
+    collections::HashMap,
     fmt,
     fs::read_to_string,
     io::{BufRead, BufReader},
     process::Stdio,
     sync::{Arc, Mutex},
-    thread,
+    thread::{self, sleep},
     time::{Duration, Instant},
+    u64,
 };
 
 use crate::{
@@ -45,8 +47,10 @@ use eframe::{
 use egui_extras::{Column, TableBuilder};
 use egui_plot::{Line, Plot, PlotPoints};
 use itertools::Itertools;
+use lsblk::{BlockDevice, Mount};
+use procfs::diskstats;
 // use nvml_wrapper::enum_wrappers::device::{Clock, ClockId, TemperatureSensor};
-use sysinfo::{CpuRefreshKind, Pid};
+use sysinfo::{CpuRefreshKind, Disk, Pid};
 use tokio::process::Command;
 // use windows::{
 //     core::PWSTR,
@@ -77,29 +81,29 @@ fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
     ui.vertical_centered(|ui| ui.label("Networks"));
 
     for (interface_name, data) in filter_networks(appdata) {
-        // ui.push_id(format!("network graph {interface_name}"), |ui| {
-        //     let table = TableBuilder::new(ui)
-        //         .striped(true)
-        //         .columns(Column::exact((SIDEBAR_WIDTH - 10.0) * 0.4), 2);
-        //     table.header(10.0, |mut header| {
-        //         header.col(|ui| {
-        //             ui.add(
-        //                 Label::new(
-        //                     RichText::new(format!("⬆ {}", format_bytes(data.tx))).size(12.0),
-        //                 )
-        //                 .wrap(false),
-        //             );
-        //         });
-        //         header.col(|ui| {
-        //             ui.add(
-        //                 Label::new(
-        //                     RichText::new(format!("⬇ {}", format_bytes(data.rx))).size(12.0),
-        //                 )
-        //                 .wrap(false),
-        //             );
-        //         });
-        //     });
-        // });
+        ui.push_id(format!("network graph {interface_name}"), |ui| {
+            let table = TableBuilder::new(ui)
+                .striped(true)
+                .columns(Column::exact((SIDEBAR_WIDTH - 10.0) * 0.4), 2);
+            table.header(10.0, |mut header| {
+                header.col(|ui| {
+                    ui.add(
+                        Label::new(
+                            RichText::new(format!("⬆ {}", format_bytes(data.tx))).size(12.0),
+                        )
+                        .wrap_mode(eframe::egui::TextWrapMode::Extend),
+                    );
+                });
+                header.col(|ui| {
+                    ui.add(
+                        Label::new(
+                            RichText::new(format!("⬇ {}", format_bytes(data.rx))).size(12.0),
+                        )
+                        .wrap_mode(eframe::egui::TextWrapMode::Extend),
+                    );
+                });
+            });
+        });
 
         let up_buffer = appdata
             .net_up_buffer
@@ -107,11 +111,11 @@ fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
             .or_insert(CircleVec::new());
         let up = up_buffer.read();
 
-        // let up_line = Line::new(
-        //     (0..up_buffer.capacity())
-        //         .map(|i| [i as f64, { up[i] }])
-        //         .collect::<PlotPoints>(),
-        // );
+        let up_line = Line::new(
+            (0..up_buffer.capacity())
+                .map(|i| [i as f64, { up[i] }])
+                .collect::<PlotPoints>(),
+        );
 
         let down_buffer = appdata
             .net_down_buffer
@@ -119,11 +123,11 @@ fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
             .or_insert(CircleVec::new());
         let down = down_buffer.read();
 
-        // let down_line = Line::new(
-        //     (0..down_buffer.capacity())
-        //         .map(|i| [i as f64, { down[i] }])
-        //         .collect::<PlotPoints>(),
-        // );
+        let down_line = Line::new(
+            (0..down_buffer.capacity())
+                .map(|i| [i as f64, { down[i] }])
+                .collect::<PlotPoints>(),
+        );
 
         ui.add_space(3.0);
 
@@ -138,12 +142,12 @@ fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
             .copied()
             .unwrap_or_default();
 
-        // add_graph(
-        //     "network",
-        //     ui,
-        //     vec![down_line, up_line],
-        //     &[14.0 * 1024.0 * 1024.0, max_down, max_up],
-        // );
+        add_graph(
+            &format!("network-{interface_name}"),
+            ui,
+            vec![down_line, up_line],
+            &[14.0 * 1024.0 * 1024.0, max_down, max_up],
+        );
     }
     ui.separator();
     step_timing(appdata, crate::CurrentStep::Network);
@@ -784,16 +788,7 @@ fn show_drives(appdata: &MyApp, ui: &mut Ui) {
         .num_columns(2)
         .striped(true)
         .show(ui, |ui| {
-            for (i, d) in appdata
-                .disks
-                .iter()
-                .sorted_by_key(|d| d.mount_point())
-                .filter(|d| d.file_system() != "vfat")
-                .group_by(|d| d.name())
-                .into_iter()
-                .map(|(_, g)| g.into_iter().next().unwrap())
-                .enumerate()
-            {
+            for (i, d) in get_filtered_disks(appdata).iter().enumerate() {
                 ui.spacing_mut().interact_size = [15.0, 12.0].into();
 
                 let replace = d.mount_point().to_str().unwrap().replace('\\', "");
@@ -807,15 +802,22 @@ fn show_drives(appdata: &MyApp, ui: &mut Ui) {
                 //     .find(|(s, _, _)| s == mount)
                 //     .unwrap();
 
+                let mydisk = &appdata.disk_data[i];
+
+                let read = mydisk.io_history.read();
+                let value = read.last().unwrap_or(&0);
+
                 ui.add(Label::new(
                     RichText::new(format!(
                         // FIXME: rework disk io system in linux
-                        // "/{} {value:.1}%",
-                        "/{}",
-                        if mount.len() < 12 {
+                        "{} {value:.1}%",
+                        // "/{}",
+                        if mount.trim().is_empty() {
+                            "/".to_string()
+                        } else if mount.len() < 8 {
                             mount.to_string()
                         } else {
-                            "...".to_string() + &mount[mount.len() - 12..]
+                            "...".to_string() + &mount[mount.len() - 8..]
                         }
                     ))
                     .small()
@@ -845,77 +847,176 @@ fn show_drives(appdata: &MyApp, ui: &mut Ui) {
         });
     ui.spacing();
 
-    // let mut lines = Vec::new();
-    // for (_d, diskbuffer) in appdata.disk_buffer.iter().sorted_by_key(|h| h.0) {
-    //     let values = diskbuffer.read();
-    //     lines.push(Line::new(
-    //         (0..diskbuffer.capacity())
-    //             .map(|i| [i as f64, { values[i] }])
-    //             .collect::<PlotPoints>(),
-    //     ));
-    // }
+    let mut lines = Vec::new();
+    for d in appdata
+        .disk_data
+        .iter()
+        .sorted_by_key(|h| h.mount_point.clone())
+    {
+        let values = d.io_history.read();
+        lines.push(Line::new(
+            (0..d.io_history.capacity())
+                .map(|i| [i as f64, { values[i] as f64 }])
+                .collect::<PlotPoints>(),
+        ));
+    }
 
-    // add_graph("disk", ui, lines, &[100.5]);
+    add_graph("disk", ui, lines, &[100.5]);
 
     ui.separator();
+}
+
+fn get_filtered_disks(appdata: &MyApp) -> Vec<&Disk> {
+    appdata
+        .disks
+        .iter()
+        .sorted_by_key(|d| d.mount_point())
+        .filter(|d| d.file_system() != "vfat")
+        .group_by(|d| d.name())
+        .into_iter()
+        .map(|(_, g)| g.into_iter().next().unwrap())
+        .collect_vec()
 }
 
 // FIX
 fn refresh_disk_io_time(appdata: &mut MyApp) {
     // unsafe {
     //     // Siehe: https://learn.microsoft.com/en-us/windows/win32/perfctrs/pdh-error-codes
-    //     for (d, handle, value) in &mut appdata.disk_time_value_handle_map {
-    //         let mut new_value = Default::default();
-    //         PdhGetFormattedCounterValue(*handle, PDH_FMT_DOUBLE, None, &mut new_value);
-    //         *value = new_value.Anonymous.doubleValue;
-    //         appdata
-    //             .disk_buffer
-    //             .entry(d.clone())
-    //             .or_insert(CircleVec::new())
-    //             .add(*value);
-    //     }
-    // }
+
+    // sleep(Duration::from_millis(1000));
+    let diskstats = procfs::diskstats().unwrap();
+
+    for d in &mut appdata.disk_data {
+        let disk = diskstats.iter().find(|ds| ds.name == d.device).unwrap();
+        if d.last_io_time == 0 {
+            d.last_io_time = disk.time_in_progress;
+            d.last_update = Instant::now();
+            continue;
+        }
+
+        let diff = disk.time_in_progress - d.last_io_time;
+
+        let timediff_ms = d.last_update.elapsed().as_millis() as u64;
+        let loadpercent = diff * 100 / timediff_ms; // x100 for %
+
+        // println!(
+        //     "{}: {} -> Diff: {}ms, timediff: {timediff_ms}ms, Load: {}%",
+        //     d.mount_point, d.last_io_time, diff, loadpercent
+        // );
+
+        d.io_history.add(loadpercent);
+        d.last_io_time = disk.time_in_progress;
+        d.last_update = Instant::now();
+    }
+    // println!();
+}
+
+pub struct MyDiskInfo {
+    pub name: String,
+    pub mount_point: String,
+    pub device: String,
+    pub last_io_time: u64,
+    pub last_update: Instant,
+    pub io_history: Arc<CircleVec<u64, 100>>,
 }
 
 pub fn init_system(appdata: &mut MyApp) {
-    // open_performance_browser();
-
-    // appdata.process_metric_handles = init_process_metrics(appdata.windows_performance_query_handle);
     appdata.disks.refresh(true);
 
     // println!();
     // for ele in appdata.disks.iter() {
-    //     // dbg!(ele);
+    //     dbg!(ele);
     //     dbg!(ele.name());
     //     dbg!(&ele.mount_point());
     //     dbg!(ele.file_system());
     //     println!();
     // }
-    // panic!();
+    // println!();
+
+    let bdl = BlockDevice::list().unwrap();
+    // for b in &bdl {
+    //     println!("{b:?}");
+    // }
+    // println!();
+
+    let ml = Mount::list().unwrap().collect_vec();
+    // for m in &ml {
+    //     println!("{m:?}");
+    //     println!("{}", m.mountpoint.to_str().unwrap());
+    // }
+    // println!();
+
+    // let diskstats = diskstats().unwrap();
+    // for disk in &diskstats {
+    //     println!("{disk:?}");
+    // }
+
+    // println!();
+
+    let mut diskmap: HashMap<String, String> = HashMap::new();
+
+    let mut vec = Vec::new();
+
+    for d in get_filtered_disks(appdata) {
+        let m = d.mount_point().to_str().unwrap();
+        // println!("{m}");
+        let mount = ml
+            .iter()
+            .find(|mlm| mlm.mountpoint.to_str().unwrap().replace("\\040", " ") == m)
+            .unwrap();
+        // println!("{m} -> {mount:?}");
+        let blockdev;
+        if mount.device.contains("/by-uuid/") {
+            let uuid = mount.device.replace("/dev/disk/by-uuid/", "");
+
+            blockdev = bdl
+                .iter()
+                .find(|bd| &bd.uuid.clone().unwrap_or_default() == &uuid);
+        } else {
+            blockdev = bdl
+                .iter()
+                .find(|bd| bd.fullname.to_str().unwrap() == mount.device);
+        }
+        if let Some(bd) = blockdev {
+            // println!("{m} -> {mount:?} -> {blockdev:?} -> {}", bd.name);
+            diskmap.insert(m.to_string(), bd.name.clone());
+
+            let disk = MyDiskInfo {
+                name: bd.name.clone(),
+                mount_point: m.to_string(),
+                device: bd.name.clone(),
+                last_io_time: 0,
+                last_update: Instant::now(),
+                io_history: CircleVec::new(),
+            };
+            vec.push(disk);
+        }
+        // println!();
+    }
+
+    appdata.disk_data.append(&mut vec);
 
     appdata.system_status.refresh_cpu_all();
 
     // iterate over disks and add disk io time counters
-    for d in appdata.disks.iter().sorted_by_key(|d| d.mount_point()) {
+    let mut drive_letters = Vec::new();
+    for d in get_filtered_disks(appdata) {
         let drive_letter = d.mount_point().to_str().unwrap().replace('\\', "");
-        // let metric_handle = add_english_counter(
-        //     format!(r"\LogicalDisk({drive_letter})\% Disk Time"),
-        //     appdata.windows_performance_query_handle,
-        // );
-
-        appdata
-            .disk_time_value_handle_map
-            .push((drive_letter, 0, 0.0));
+        drive_letters.push(drive_letter.clone());
     }
 
-    // unsafe { PdhCollectQueryData(appdata.windows_performance_query_handle) };
+    // for drive_letter in drive_letters {
+    //     appdata
+    //         .disk_time_value_handle_map
+    //         .push((drive_letter, 0, 0.0));
+    // }
 }
 
 pub fn get_windows_glass_color(use_plain_blackground: bool) -> Color32 {
     if use_plain_blackground {
         return get_base_background();
     }
-    let mut col: u32 = 0;
+    let col: u32 = 0;
     // let mut opaque: BOOL = BOOL(0);
     // unsafe {
     //     DwmGetColorizationColor(&mut col, &mut opaque).unwrap();
