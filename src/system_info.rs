@@ -382,7 +382,8 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
     );
     let power = appdata.cpu_power_buffer.read();
     let current_power = power.last().copied().unwrap_or_default();
-    let max_power = appdata.settings.lock().current_settings.max_cpu_power;
+    // let max_power = appdata.settings.lock().current_settings.max_cpu_power;
+    let max_power = 200.0;
 
     ui.add(
         EdgyProgressBar::new((current_power / max_power) as f32)
@@ -397,8 +398,8 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
 
     Grid::new("cpu_grid_cores")
         .num_columns(2)
-        .spacing([2.0, 2.0])
-        .striped(true)
+        .spacing([2.0, 0.0])
+        .striped(false)
         .show(ui, |ui| {
             for (_i, cpu_chunk) in appdata.system_status.cpus().chunks(2).enumerate() {
                 for cpu in cpu_chunk {
@@ -410,7 +411,8 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
                             .text(
                                 // RichText::new(format!("{usage:.0}% {temp:.0} °C"))
                                 RichText::new(format!("{usage:.0}%")).small().strong(),
-                            ),
+                            )
+                            .compact(true),
                     );
                 }
                 ui.end_row();

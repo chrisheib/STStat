@@ -18,6 +18,7 @@ pub struct EdgyProgressBar {
     fill: Option<Color32>,
     animate: bool,
     colored_dot: Option<Color32>,
+    compact: bool,
 }
 
 impl EdgyProgressBar {
@@ -31,12 +32,20 @@ impl EdgyProgressBar {
             fill: None,
             animate: false,
             colored_dot: None,
+            compact: false,
         }
     }
 
     /// The desired width of the bar. Will use all horizontal space if not set.
     pub fn desired_width(mut self, desired_width: f32) -> Self {
         self.desired_width = Some(desired_width);
+        self
+    }
+
+    /// Whether to use a compact style (smaller height).
+    /// Defaults to `false`.
+    pub fn compact(mut self, compact: bool) -> Self {
+        self.compact = compact;
         self
     }
 
@@ -95,13 +104,18 @@ impl Widget for EdgyProgressBar {
             fill,
             animate,
             colored_dot,
+            compact,
         } = self;
 
         // let animate = animate && progress < 1.0;
 
         let desired_width =
             desired_width.unwrap_or_else(|| ui.available_size_before_wrap().x.at_least(96.0));
-        let height = desired_height.unwrap_or(12.0);
+        let height = if !compact {
+            desired_height.unwrap_or(12.0)
+        } else {
+            8.0
+        };
         let (outer_rect, response) =
             ui.allocate_exact_size(vec2(desired_width, height), Sense::hover());
 
@@ -140,57 +154,60 @@ impl Widget for EdgyProgressBar {
                 StrokeKind::Inside,
             );
 
-            if let Some(text_kind) = text {
-                if let Some(dc) = self.colored_dot {
-                    let dot_text = WidgetText::RichText(RichText::new("⏺").size(8.0));
-                    let galley = dot_text.into_galley(
+            if !compact {
+                if let Some(text_kind) = text {
+                    if let Some(dc) = self.colored_dot {
+                        let dot_text = WidgetText::RichText(RichText::new("⏺").size(8.0));
+                        let galley = dot_text.into_galley(
+                            ui,
+                            Some(TextWrapMode::Truncate),
+                            8.0,
+                            TextStyle::Button,
+                        );
+                        let text_pos = outer_rect.left_center()
+                            - Vec2::new(0.0, galley.size().y / 2.0)
+                            + vec2(3.0, 0.0);
+
+                        ui.painter()
+                            .with_clip_rect(outer_rect)
+                            .galley_with_override_text_color(text_pos, galley, dc);
+                        //     galley.paint_with_color_override(
+                        //         &ui.painter().with_clip_rect(outer_rect),
+                        //         text_pos,
+                        //         dc,
+                        //     );
+                    }
+
+                    let text = match text_kind {
+                        EdgyProgressBarText::Custom(text) => text,
+                        EdgyProgressBarText::Percentage => WidgetText::RichText(
+                            RichText::new(format!("{}%", (progress * 100.0) as usize))
+                                .small()
+                                .strong(),
+                        ),
+                    };
+
+                    let dot_space = if colored_dot.is_some() { 10.0 } else { 0.0 };
+                    let galley = text.into_galley(
                         ui,
                         Some(TextWrapMode::Truncate),
-                        8.0,
+                        f32::INFINITY,
                         TextStyle::Button,
                     );
                     let text_pos = outer_rect.left_center() - Vec2::new(0.0, galley.size().y / 2.0)
-                        + vec2(3.0, 0.0);
-
+                        + vec2(ui.spacing().item_spacing.x / 2.0, 0.0)
+                        + vec2(dot_space, 0.0);
+                    let text_color = visuals
+                        .override_text_color
+                        .unwrap_or(visuals.selection.stroke.color);
                     ui.painter()
                         .with_clip_rect(outer_rect)
-                        .galley_with_override_text_color(text_pos, galley, dc);
-                    //     galley.paint_with_color_override(
-                    //         &ui.painter().with_clip_rect(outer_rect),
-                    //         text_pos,
-                    //         dc,
-                    //     );
+                        .galley(text_pos, galley, text_color);
+                    // galley.paint_with_color(
+                    //     text_pos,
+                    //     text_color,
+                    // );
                 }
-
-                let text = match text_kind {
-                    EdgyProgressBarText::Custom(text) => text,
-                    EdgyProgressBarText::Percentage => WidgetText::RichText(
-                        RichText::new(format!("{}%", (progress * 100.0) as usize))
-                            .small()
-                            .strong(),
-                    ),
-                };
-
-                let dot_space = if colored_dot.is_some() { 10.0 } else { 0.0 };
-                let galley = text.into_galley(
-                    ui,
-                    Some(TextWrapMode::Truncate),
-                    f32::INFINITY,
-                    TextStyle::Button,
-                );
-                let text_pos = outer_rect.left_center() - Vec2::new(0.0, galley.size().y / 2.0)
-                    + vec2(ui.spacing().item_spacing.x / 2.0, 0.0)
-                    + vec2(dot_space, 0.0);
-                let text_color = visuals
-                    .override_text_color
-                    .unwrap_or(visuals.selection.stroke.color);
-                ui.painter()
-                    .with_clip_rect(outer_rect)
-                    .galley(text_pos, galley, text_color);
-                // galley.paint_with_color(
-                //     text_pos,
-                //     text_color,
-                // );
             }
         }
 
