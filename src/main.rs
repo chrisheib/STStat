@@ -505,11 +505,18 @@ impl eframe::App for MyApp {
                 show_settings(self, ui, None);
             });
 
-            let time_to_next_second = 1000 - chrono::Local::now().timestamp_subsec_millis();
+            let current_ms = chrono::Local::now().timestamp_subsec_millis();
+
+            let time_to_next_second = 1000 - current_ms + 50;
+
+            // println!(
+            //     "Frame {}: current ms: {current_ms}, time to next second: {time_to_next_second}",
+            //     self.framecount
+            // );
 
             // guess when the next update should occur.
             ctx.request_repaint_after(
-                (chrono::Duration::milliseconds(time_to_next_second as i64 + 5))
+                (chrono::Duration::milliseconds(time_to_next_second as i64))
                     .to_std()
                     .unwrap(),
             );
