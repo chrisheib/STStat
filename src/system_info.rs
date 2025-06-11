@@ -1,12 +1,11 @@
 use std::{
-    any::Any,
     collections::HashMap,
     fmt,
     fs::read_to_string,
     io::{BufRead, BufReader},
     process::Stdio,
     sync::{Arc, Mutex},
-    thread::{self, sleep},
+    thread::{self},
     time::{Duration, Instant},
     u64,
 };
@@ -16,7 +15,6 @@ use crate::{
     circlevec::CircleVec,
     color::{auto_color_dark, get_base_background},
     components::edgy_progress::EdgyProgressBar,
-    ohw::MyNode,
     // process::{add_english_counter, get_pdh_process_data, init_process_metrics, Process},
     // sidebar::STATIC_HWND,
     step_timing,
@@ -24,31 +22,24 @@ use crate::{
     MyApp,
     SIDEBAR_WIDTH,
 };
-use chrono::{Local, Timelike};
 use eframe::{
     egui::{
         // plot::{Line, Plot, PlotPoints},
-        style,
         vec2,
         Grid,
         Label,
         Layout,
-        Margin,
-        Rect,
         RichText,
         Sense,
-        Stroke,
         Ui,
-        Vec2,
     },
-    emath::Align::{self, Max},
+    emath::Align::Max,
     epaint::Color32,
 };
 use egui_extras::{Column, TableBuilder};
 use egui_plot::{Line, Plot, PlotPoints};
 use itertools::Itertools;
 use lsblk::{BlockDevice, Mount};
-use procfs::diskstats;
 // use nvml_wrapper::enum_wrappers::device::{Clock, ClockId, TemperatureSensor};
 use sysinfo::{CpuRefreshKind, Disk, Pid};
 use tokio::process::Command;
@@ -193,12 +184,6 @@ pub struct GpuData {
     max_clock: f32,
 }
 
-fn timing_to_str(timestamp: std::time::Instant, text: &mut String, perf_trace: bool) {
-    if perf_trace {
-        *text += &format!("{}\n", timestamp.elapsed().as_micros());
-    }
-}
-
 pub fn refresh_gpu(appdata: &mut MyApp) {
     step_timing(appdata, CurrentStep::UpdateGPU);
 
@@ -282,11 +267,11 @@ fn show_ping(appdata: &mut MyApp, ui: &mut Ui) {
     let pings = appdata.ping_buffer.read();
     let last_ping = pings.last().copied().unwrap_or_default();
     let max_ping = pings.iter().max().copied().unwrap_or_default();
-    // let line = Line::new(
-    //     (0..appdata.ping_buffer.capacity())
-    //         .map(|i| [i as f64, { pings[i] as f64 }])
-    //         .collect::<PlotPoints>(),
-    // );
+    let line = Line::new(
+        (0..appdata.ping_buffer.capacity())
+            .map(|i| [i as f64, { pings[i] as f64 }])
+            .collect::<PlotPoints>(),
+    );
 
     let lp_str = if last_ping == 0 {
         "ERR".to_string()
@@ -295,7 +280,7 @@ fn show_ping(appdata: &mut MyApp, ui: &mut Ui) {
     };
 
     ui.label(RichText::new(format!("M: {max_ping:.0}ms, C: {lp_str}")).size(12.0));
-    // add_graph("ping", ui, vec![line], &[50.0, max_ping as f64]);
+    add_graph("ping", ui, vec![line], &[50.0, max_ping as f64]);
     step_timing(appdata, crate::CurrentStep::Ping);
     ui.separator();
 }
@@ -305,7 +290,7 @@ fn show_battery(appdata: &mut MyApp, ui: &mut Ui) {
         return;
     }
     ui.vertical_centered(|ui| ui.label("Battery"));
-    let level = appdata.battery_level_buffer.read();
+    // let level = appdata.battery_level_buffer.read();
     // let level_line = Line::new(
     //     (0..appdata.battery_level_buffer.capacity())
     //         .map(|i| {
@@ -882,11 +867,9 @@ fn get_filtered_disks(appdata: &MyApp) -> Vec<&Disk> {
 
 // FIX
 fn refresh_disk_io_time(appdata: &mut MyApp) {
-    // unsafe {
-    //     // Siehe: https://learn.microsoft.com/en-us/windows/win32/perfctrs/pdh-error-codes
-
-    // sleep(Duration::from_millis(1000));
     let diskstats = procfs::diskstats().unwrap();
+
+    disk_io_percent_from_raw();
 
     for d in &mut appdata.disk_data {
         let disk = diskstats.iter().find(|ds| ds.name == d.device).unwrap();
@@ -911,6 +894,50 @@ fn refresh_disk_io_time(appdata: &mut MyApp) {
         d.last_update = Instant::now();
     }
     // println!();
+}
+
+fn disk_io_percent_from_raw() {
+    // let read_ticks_weighted_ms_prev = if read_ticks_weighted_ms < disk_stat.read_ticks_weighted_ms {
+    //     read_ticks_weighted_ms
+    // } else {
+    //     disk_stat.read_ticks_weighted_ms
+    // };
+
+    // let write_ticks_weighted_ms_prev =
+    //     if write_ticks_weighted_ms < disk_stat.write_ticks_weighted_ms {
+    //         write_ticks_weighted_ms
+    //     } else {
+    //         disk_stat.write_ticks_weighted_ms
+    //     };
+
+    // let discard_ticks_weighted_ms_prev =
+    //     if discard_ticks_weighted_ms < disk_stat.discard_ticks_weighted_ms {
+    //         discard_ticks_weighted_ms
+    //     } else {
+    //         disk_stat.discard_ticks_weighted_ms
+    //     };
+
+    // let flush_ticks_weighted_ms_prev =
+    //     if flush_ticks_weighted_ms < disk_stat.flush_ticks_weighted_ms {
+    //         flush_ticks_weighted_ms
+    //     } else {
+    //         disk_stat.flush_ticks_weighted_ms
+    //     };
+
+    // let elapsed = disk_stat.read_time_ms.elapsed().as_secs_f32();
+
+    // let delta_read_ticks_weighted_ms = read_ticks_weighted_ms - read_ticks_weighted_ms_prev;
+    // let delta_write_ticks_weighted_ms = write_ticks_weighted_ms - write_ticks_weighted_ms_prev;
+    // let delta_discard_ticks_weighted_ms =
+    //     discard_ticks_weighted_ms - discard_ticks_weighted_ms_prev;
+    // let delta_flush_ticks_weighted_ms = flush_ticks_weighted_ms - flush_ticks_weighted_ms_prev;
+    // let delta_ticks_weighted_ms = delta_read_ticks_weighted_ms
+    //     + delta_write_ticks_weighted_ms
+    //     + delta_discard_ticks_weighted_ms
+    //     + delta_flush_ticks_weighted_ms;
+
+    // // Arbitrary math is arbitrary
+    // let busy_percent: f32 = (delta_ticks_weighted_ms as f32 / (elapsed * 8.0)).min(100.);
 }
 
 pub struct MyDiskInfo {
@@ -1182,30 +1209,31 @@ fn refresh_cpu(appdata: &mut MyApp) {
     }
 }
 
-pub fn refresh_battery(appdata: &mut MyApp) {
-    let level: f64 = appdata
-        .ohw_info
-        .lock()
-        .parse_value_path_def("#0|+images_icon/battery.png|levels|charge");
+pub fn refresh_battery(_appdata: &mut MyApp) {
+    // TODO
+    // let level: f64 = appdata
+    //     .ohw_info
+    //     .lock()
+    //     .parse_value_path_def("#0|+images_icon/battery.png|levels|charge");
 
-    if level != 0.0 {
-        appdata.battery_enabled = true;
-        let ohw = appdata.ohw_info.lock();
-        let mut charge =
-            -ohw.parse_value_path_def::<f64>("#0|+images_icon/battery.png|currents|discharge");
-        if charge == -0.0 {
-            charge = ohw.parse_value_path_def("#0|+images_icon/battery.png|currents|charge");
-        }
-        drop(ohw);
-        appdata.battery_change_buffer.add(charge);
+    // if level != 0.0 {
+    //     appdata.battery_enabled = true;
+    //     let ohw = appdata.ohw_info.lock();
+    //     let mut charge =
+    //         -ohw.parse_value_path_def::<f64>("#0|+images_icon/battery.png|currents|discharge");
+    //     if charge == -0.0 {
+    //         charge = ohw.parse_value_path_def("#0|+images_icon/battery.png|currents|charge");
+    //     }
+    //     drop(ohw);
+    //     appdata.battery_change_buffer.add(charge);
 
-        let now = Local::now().naive_local();
-        if now > appdata.battery_level_next_update {
-            appdata.battery_level_buffer.add(level);
-            appdata.battery_level_next_update =
-                now + chrono::Duration::seconds(60 - now.time().second() as i64);
-        }
-    }
+    //     let now = Local::now().naive_local();
+    //     if now > appdata.battery_level_next_update {
+    //         appdata.battery_level_buffer.add(level);
+    //         appdata.battery_level_next_update =
+    //             now + chrono::Duration::seconds(60 - now.time().second() as i64);
+    //     }
+    // }
 }
 
 pub async fn loop_amd_temp_sensor(shared_data: Arc<Mutex<Option<f32>>>) {

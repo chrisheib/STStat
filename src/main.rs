@@ -9,48 +9,34 @@ use std::{
     time::Instant,
 };
 
-use crate::{
-    settings::get_screen_size,
-    // sidebar::setup_sidebar
-};
-use chrono::{Duration, Local, NaiveDateTime};
+use crate::settings::get_screen_size;
+use chrono::{DateTime, Duration, Local, NaiveDateTime};
 use circlevec::CircleVec;
-use display_info::DisplayInfo;
 use eframe::{
-    egui::{self, Label, Layout, RichText, ScrollArea, Vec2, ViewportBuilder, Visuals},
+    egui::{self, Label, Layout, RichText, ScrollArea, ViewportBuilder, Visuals},
     epaint::Color32,
 };
-use ekko::{Ekko, EkkoResponse, EkkoSettings};
-use ohw::OHWNode;
 use parking_lot::Mutex;
-// use process::{Process, ProcessMetricHandles};
+use ping::tcp_ping_tokio;
 use self_update::{backends::github::Update, cargo_crate_version};
-use serde::{Deserialize, Serialize};
 use settings::{show_settings, MySettings};
-// use sidebar::dispose_sidebar;
 use sysinfo::{Disks, Networks, System};
 use system_info::{
     get_windows_glass_color, init_system, loop_amd_temp_sensor, refresh, refresh_color,
     run_nvidia_smi, GpuData, MyDiskInfo,
 };
-use tokio::{runtime::Runtime, spawn, time::sleep};
-use winit::{
-    application::ApplicationHandler,
-    event::WindowEvent,
-    event_loop::{ActiveEventLoop, EventLoop},
-    window::{Window, WindowId},
-};
-// use windows::Win32::System::Performance::{PdhCloseQuery, PdhOpenQueryA};
+use tokio::{runtime::Runtime, time::sleep};
 
 // mod autostart;
 mod bytes_format;
 mod circlevec;
 mod color;
 mod components;
-mod ohw;
+// mod ohw;
 // mod process;
 mod settings;
 // mod sidebar;
+mod ping;
 mod system_info;
 
 // On read problems, run: lodctr /r
@@ -60,10 +46,6 @@ pub const SIDEBAR_WIDTH: f32 = 130.0;
 
 fn main() -> Result<(), eframe::Error> {
     color_eyre::install().unwrap();
-    // let mut pdh_query_handle: isize = -1;
-
-    // let monitors = get_screens_linux();
-    // unsafe { PdhOpenQueryA(None, 0, &mut pdh_query_handle) };
 
     panic::set_hook(Box::new(|p| {
         println!("Custom panic hook: {p}");
@@ -71,12 +53,9 @@ fn main() -> Result<(), eframe::Error> {
     }));
 
     let settings = Arc::new(Mutex::new(MySettings::load()));
-    let cancel_settings = settings.clone();
 
     ctrlc::set_handler(move || {
         println!("received Ctrl+C, removing sidebar");
-        // dispose_sidebar(cancel_settings.clone());
-        // unsafe { PdhCloseQuery(pdh_query_handle) };
         std::process::exit(0);
     })
     .expect("Error setting Ctrl-C handler");
@@ -84,25 +63,12 @@ fn main() -> Result<(), eframe::Error> {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let ping_buffer = CircleVec::<u64, 100>::new();
     let thread_pb = ping_buffer.clone();
-    let ohw_info: Arc<Mutex<Option<OHWNode>>> = Default::default();
-    let thread_ohw = ohw_info.clone();
 
-    // rt.spawn(ping_thread(thread_pb));
-    // rt.spawn(ohw_thread(thread_ohw));
+    rt.spawn(ping_thread(thread_pb));
 
     let update_available = Arc::new(AtomicBool::new(false));
     // let thread_update_available = update_available.clone();
     // thread::spawn(move || check_update_thread(thread_update_available));
-
-    // let nvid_info = if let Ok(n) = Nvml::init() {
-    //     Some(n)
-    // } else {
-    //     None
-    // };
-
-    // let nvml = Nvml::init().unwrap();
-    // Get the first `Device` (GPU) in the system
-    // let device = nvml.device_by_index(0).unwrap();
 
     let gpu_data = Arc::new(std::sync::Mutex::new(GpuData::default()));
     let thread_gpu = gpu_data.clone();
@@ -125,7 +91,6 @@ fn main() -> Result<(), eframe::Error> {
         cpu_maxtemp_buffer: CircleVec::new(),
         cpu_power_buffer: CircleVec::new(),
         ram_buffer: CircleVec::new(),
-        ohw_info,
         rt,
         // nvid_info,
         gpu: Some(gpu_data),
@@ -218,32 +183,19 @@ fn main() -> Result<(), eframe::Error> {
 
     // dispose_sidebar(settings.clone());
 
-    // unsafe { PdhCloseQuery(pdh_query_handle) };
-
     Ok(())
 }
 
 async fn ping_thread(thread_pb: Arc<CircleVec<u64, 100>>) -> ! {
-    let ekko = Ekko::with_target([8, 8, 8, 8]).unwrap();
     loop {
-        if let Ok(res) = ekko.send_with_settings(
-            32,
-            EkkoSettings {
-                timeout: std::time::Duration::from_millis(950),
-                ..Default::default()
-            },
-        ) {
-            match res {
-                EkkoResponse::Destination(res) => thread_pb.add(res.elapsed.as_millis() as u64),
-                _ => thread_pb.add(0),
-            }
-        } else {
-            thread_pb.add(0)
+        match tcp_ping_tokio("8.8.8.8", 53).await {
+            Ok(rtt) => thread_pb.add(rtt.as_millis() as u64),
+            Err(_) => thread_pb.add(0),
         }
 
         sleep(
             Duration::milliseconds(
-                (1000 - Local::now().naive_local().timestamp_subsec_millis() as i64)
+                (1000 - Local::now().timestamp_subsec_millis() as i64)
                     .min(1000)
                     .max(520),
             )
@@ -254,34 +206,7 @@ async fn ping_thread(thread_pb: Arc<CircleVec<u64, 100>>) -> ! {
     }
 }
 
-async fn ohw_thread(thread_ohw: Arc<Mutex<Option<OHWNode>>>) -> ! {
-    loop {
-        if let Ok(data) = reqwest::get("http://localhost:8085/data.json").await {
-            if let Ok(data) = data.json::<OHWNode>().await {
-                *thread_ohw.lock() = Some(data)
-            } else {
-                *thread_ohw.lock() = None
-            }
-        } else {
-            *thread_ohw.lock() = None
-        };
-        sleep(
-            Duration::milliseconds(
-                (1000
-                    - Local::now()
-                        .naive_local()
-                        .and_utc()
-                        .timestamp_subsec_millis() as i64)
-                    .min(999)
-                    .max(520),
-            )
-            .to_std()
-            .unwrap(),
-        )
-        .await;
-    }
-}
-
+#[expect(dead_code)]
 fn check_update_thread(update_available: Arc<AtomicBool>) -> ! {
     loop {
         if let Ok(status) = Update::configure()
@@ -337,8 +262,8 @@ pub struct MyApp {
     pub firstupdate: bool,
     pub framecount: u64,
     pub system_status: System,
-    pub next_update: NaiveDateTime,
-    pub next_screen_update: NaiveDateTime,
+    pub next_update: DateTime<Local>,
+    pub next_screen_update: DateTime<Local>,
     pub ping_buffer: Arc<CircleVec<u64, 100>>,
     pub cpu_buffer: Arc<CircleVec<f32, 100>>,
     pub cpu_maxtemp_buffer: Arc<CircleVec<f32, 100>>,
@@ -348,7 +273,6 @@ pub struct MyApp {
     // pub disk_time_value_handle_map: Vec<(String, isize, f64)>,
     pub core_time_value_handle_map: Vec<(usize, isize, f64)>,
     // pub nvid_info: Option<Nvml>,
-    pub ohw_info: Arc<Mutex<Option<OHWNode>>>,
     pub rt: Runtime,
     pub gpu: Option<Arc<std::sync::Mutex<GpuData>>>,
     pub timing: Arc<CircleVec<TimingStep, 2000>>,
@@ -399,7 +323,7 @@ impl eframe::App for MyApp {
 
         self.current_frame_start = Instant::now();
         step_timing(self, CurrentStep::Begin);
-        let now = Local::now().naive_local();
+        let now = Local::now();
         if now > self.next_screen_update {
             // get_screen_size(self, frame.info(). .native_pixels_per_point);
             self.next_screen_update = now + Duration::seconds(5);
@@ -574,7 +498,7 @@ fn custom_window_frame(
 
 fn title_bar_ui(
     ui: &mut egui::Ui,
-    frame: &mut eframe::Frame,
+    _frame: &mut eframe::Frame,
     title_bar_rect: eframe::epaint::Rect,
     title: &str,
 ) {
