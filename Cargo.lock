@@ -1100,18 +1100,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "60b1af1c220855b6ceac025d3f6ecdd2b7c4894bfe9cd9bda4fbb4bc7c0d4cf0"
 
 [[package]]
-name = "ekko"
-version = "0.7.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d2b0cfb1fb54794799dfbc3903f6439101cbde3ecd568b578ec0287a0b992c0"
-dependencies = [
- "byteorder",
- "rand",
- "socket2",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "emath"
 version = "0.31.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3449,7 +3437,6 @@ dependencies = [
  "eframe",
  "egui_extras",
  "egui_plot",
- "ekko",
  "itertools",
  "lazy_static",
  "lsblk",

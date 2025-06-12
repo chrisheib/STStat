@@ -11,7 +11,7 @@ use std::{
 };
 
 use crate::{
-    bytes_format::format_bytes,
+    bytes_format::{self, format_bytes},
     circlevec::CircleVec,
     color::{auto_color_dark, get_base_background},
     components::edgy_progress::EdgyProgressBar,
@@ -214,12 +214,13 @@ fn show_processes(appdata: &mut MyApp, ui: &mut Ui) {
         .system_status
         .processes()
         .iter()
-        .map(|a| Process {
-            cpu: a.1.cpu_usage(),
-            memory: a.1.memory(),
-            name: a.1.name().to_str().unwrap_or_default().to_string(),
-            pid: a.1.pid(),
-            parent: a.1.parent(),
+        .filter(|(_, p)| p.thread_kind().is_none())
+        .map(|(_, a)| Process {
+            cpu: a.cpu_usage(),
+            memory: a.memory(),
+            name: a.name().to_str().unwrap_or_default().to_string(),
+            pid: a.pid(),
+            parent: a.parent(),
         })
         .collect_vec();
 
@@ -244,7 +245,7 @@ fn show_processes(appdata: &mut MyApp, ui: &mut Ui) {
     // für alle Enkel von 1:
     // alle Kinder zusammenrechnen?
     let mut mem_p = p.clone();
-    mem_p.sort_unstable_by(|a, b| b.memory.cmp(&a.memory));
+    clean_memory_process_list(&mut mem_p);
     add_process_table(
         ui,
         5,
@@ -254,12 +255,29 @@ fn show_processes(appdata: &mut MyApp, ui: &mut Ui) {
         cpu_count,
     );
 
-    // for p in &mem_p {
-    //     println!("{p}");
+    step_timing(appdata, crate::CurrentStep::ProcRAM);
+}
+
+fn clean_memory_process_list(proc: &mut Vec<Process>) {
+    proc.sort_unstable_by_key(|a| a.pid);
+    // let mut i = proc.len() - 1;
+    // while i > 0 {
+    //     if let Some(ppid) = proc[i].parent {
+    //         if let Some(parent) = proc.iter().find(|p| p.pid == ppid) {
+    //             if parent.memory == proc[i].memory {
+    //                 // If the parent has the same memory usage, remove the child
+    //                 println!(
+    //                     "Removing {} ({}), parent: {}",
+    //                     proc[i].name, proc[i].pid, parent.name
+    //                 );
+    //                 proc.remove(i);
+    //             }
+    //         }
+    //     }
+    //     i -= 1;
     // }
     // panic!();
-
-    step_timing(appdata, crate::CurrentStep::ProcRAM);
+    proc.sort_unstable_by(|a, b| b.memory.cmp(&a.memory));
 }
 
 fn show_ping(appdata: &mut MyApp, ui: &mut Ui) {
@@ -1096,6 +1114,19 @@ fn refresh_processes(appdata: &mut MyApp) {
     appdata
         .system_status
         .refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+
+    // for (pid, p) in appdata.system_status.processes() {
+    //     println!(
+    //         "Process: {:?} (PID: {}, Parent: {:?} CPU: {:.1}%, Mem: {} bytes, Threadkind {:?})",
+    //         p.name(),
+    //         p.pid(),
+    //         p.parent(),
+    //         p.cpu_usage(),
+    //         p.memory(),
+    //         p.thread_kind()
+    //     );
+    // }
+    // panic!();
 }
 
 pub fn refresh_color(appdata: &mut MyApp, ui: &mut Ui) {
