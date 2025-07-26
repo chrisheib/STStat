@@ -17,3 +17,4 @@ devenv.local.nix
 
 error.txt
 result
+rust-build

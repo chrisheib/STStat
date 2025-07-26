@@ -11,16 +11,12 @@ use std::{
 };
 
 use crate::{
-    bytes_format::{self, format_bytes},
+    bytes_format::format_bytes,
     circlevec::CircleVec,
     color::{auto_color_dark, get_base_background},
     components::edgy_progress::EdgyProgressBar,
-    // process::{add_english_counter, get_pdh_process_data, init_process_metrics, Process},
-    // sidebar::STATIC_HWND,
-    step_timing,
-    CurrentStep,
-    MyApp,
-    SIDEBAR_WIDTH,
+    disk::refresh_disks,
+    step_timing, CurrentStep, MyApp, SIDEBAR_WIDTH,
 };
 use eframe::{
     egui::{
@@ -39,22 +35,8 @@ use eframe::{
 use egui_extras::{Column, TableBuilder};
 use egui_plot::{Line, Plot, PlotPoints};
 use itertools::Itertools;
-use lsblk::{BlockDevice, Mount};
-// use nvml_wrapper::enum_wrappers::device::{Clock, ClockId, TemperatureSensor};
-use sysinfo::{CpuRefreshKind, Disk, Pid};
+use sysinfo::{CpuRefreshKind, Pid};
 use tokio::process::Command;
-// use windows::{
-//     core::PWSTR,
-//     w,
-//     Win32::{
-//         Foundation::BOOL,
-//         Graphics::Dwm::DwmGetColorizationColor,
-//         System::Performance::{
-//             PdhBrowseCountersW, PdhCollectQueryData, PdhGetFormattedCounterValue,
-//             PDH_BROWSE_DLG_CONFIG_W, PDH_FMT_DOUBLE, PERF_DETAIL_WIZARD,
-//         },
-//     },
-// };
 
 pub fn set_system_info_components(appdata: &mut MyApp, ui: &mut Ui) {
     step_timing(appdata, crate::CurrentStep::Begin);
@@ -522,18 +504,18 @@ fn show_gpu(appdata: &MyApp, ui: &mut Ui) {
                 .fill(auto_color_dark(2))
                 .desired_width(SIDEBAR_WIDTH - 8.0),
         );
-        ui.add(
-            EdgyProgressBar::new(gpu.clock_mhz / gpu.max_clock.max(0.01))
-                .text(
-                    RichText::new(format!(
-                        "Clk: {:.0}MHz / {:.0}MHz",
-                        gpu.clock_mhz, gpu.max_clock
-                    ))
-                    .small()
-                    .strong(),
-                )
-                .desired_width(SIDEBAR_WIDTH - 8.0),
-        );
+        // ui.add(
+        //     EdgyProgressBar::new(gpu.clock_mhz / gpu.max_clock.max(0.01))
+        //         .text(
+        //             RichText::new(format!(
+        //                 "Clk: {:.0}MHz / {:.0}MHz",
+        //                 gpu.clock_mhz, gpu.max_clock
+        //             ))
+        //             .small()
+        //             .strong(),
+        //         )
+        //         .desired_width(SIDEBAR_WIDTH - 8.0),
+        // );
 
         let gpu_buf = appdata.gpu_buffer.read();
         let gpu_line = Line::new(
@@ -793,12 +775,12 @@ fn show_drives(appdata: &MyApp, ui: &mut Ui) {
         .num_columns(2)
         .striped(true)
         .show(ui, |ui| {
-            for (i, d) in get_filtered_disks(appdata).iter().enumerate() {
+            for (_i, d) in appdata.disks.iter().enumerate() {
                 ui.spacing_mut().interact_size = [15.0, 12.0].into();
 
-                let replace = d.mount_point().to_str().unwrap().replace('\\', "");
-                let collect_vec = replace.split("/").collect_vec();
-                let mount = collect_vec.last().unwrap();
+                // let replace = d.mount_point().to_str().unwrap().replace('\\', "");
+                // let collect_vec = replace.split("/").collect_vec();
+                // let mount = collect_vec.last().unwrap();
 
                 // FIXME: rework disk io system in linux
                 // let (_, _, value) = appdata
@@ -807,44 +789,40 @@ fn show_drives(appdata: &MyApp, ui: &mut Ui) {
                 //     .find(|(s, _, _)| s == mount)
                 //     .unwrap();
 
-                let mydisk = &appdata.disk_data[i];
+                // let mydisk = &appdata.disk_data[i];
 
-                let read = mydisk.io_history.read();
-                let value = read.last().unwrap_or(&0);
+                // let read = mydisk.io_history.read();
+                // let value = read.last().unwrap_or(&0);
+
+                let (blkindex, blk) = appdata
+                    .blockdevices
+                    .iter()
+                    .enumerate()
+                    .find(|(_, blk)| blk.name == d.blockdevicename)
+                    .unwrap();
+
+                let history = blk.io_history.read();
+                let usage = history.last().unwrap();
 
                 ui.add(Label::new(
-                    RichText::new(format!(
-                        // FIXME: rework disk io system in linux
-                        "{} {value:.1}%",
-                        // "/{}",
-                        if mount.trim().is_empty() {
-                            "/".to_string()
-                        } else if mount.len() < 8 {
-                            mount.to_string()
-                        } else {
-                            "...".to_string() + &mount[mount.len() - 8..]
-                        }
-                    ))
-                    .small()
-                    .strong(),
+                    RichText::new(format!("{}: {usage}%", d.displayname))
+                        .small()
+                        .strong(),
                 ));
 
                 // ui.add_space(5.0);
                 // ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.add(
-                    EdgyProgressBar::new(
-                        (d.total_space() - d.available_space()) as f32 / d.total_space() as f32,
-                    )
-                    .desired_width(appdata.settings.lock().current_settings.location.width * 0.55)
-                    .text(
-                        RichText::new(format!(
-                            "Free: {}",
-                            format_bytes(d.available_space() as f64),
-                        ))
-                        .small()
-                        .strong(),
-                    )
-                    .fill(auto_color_dark(i as i32)),
+                    EdgyProgressBar::new(d.bytes_used as f32 / d.bytes_total as f32)
+                        .desired_width(
+                            appdata.settings.lock().current_settings.location.width * 0.55,
+                        )
+                        .text(
+                            RichText::new(format!("Free: {}", format_bytes(d.bytes_free as f64),))
+                                .small()
+                                .strong(),
+                        )
+                        .fill(auto_color_dark(blkindex as i32)),
                 );
                 // });
                 ui.end_row();
@@ -853,11 +831,7 @@ fn show_drives(appdata: &MyApp, ui: &mut Ui) {
     ui.spacing();
 
     let mut lines = Vec::new();
-    for d in appdata
-        .disk_data
-        .iter()
-        .sorted_by_key(|h| h.mount_point.clone())
-    {
+    for d in &appdata.blockdevices {
         let values = d.io_history.read();
         lines.push(Line::new(
             (0..d.io_history.capacity())
@@ -871,193 +845,9 @@ fn show_drives(appdata: &MyApp, ui: &mut Ui) {
     ui.separator();
 }
 
-fn get_filtered_disks(appdata: &MyApp) -> Vec<&Disk> {
-    appdata
-        .disks
-        .iter()
-        .sorted_by_key(|d| d.mount_point())
-        .filter(|d| d.file_system() != "vfat")
-        .group_by(|d| d.name())
-        .into_iter()
-        .map(|(_, g)| g.into_iter().next().unwrap())
-        .collect_vec()
-}
-
-// FIX
-fn refresh_disk_io_time(appdata: &mut MyApp) {
-    let diskstats = procfs::diskstats().unwrap();
-
-    disk_io_percent_from_raw();
-
-    for d in &mut appdata.disk_data {
-        let disk = diskstats.iter().find(|ds| ds.name == d.device).unwrap();
-        if d.last_io_time == 0 {
-            d.last_io_time = disk.time_in_progress;
-            d.last_update = Instant::now();
-            continue;
-        }
-
-        let diff = disk.time_in_progress - d.last_io_time;
-
-        let timediff_ms = d.last_update.elapsed().as_millis() as u64;
-        let loadpercent = diff * 100 / timediff_ms; // x100 for %
-
-        // println!(
-        //     "{}: {} -> Diff: {}ms, timediff: {timediff_ms}ms, Load: {}%",
-        //     d.mount_point, d.last_io_time, diff, loadpercent
-        // );
-
-        d.io_history.add(loadpercent);
-        d.last_io_time = disk.time_in_progress;
-        d.last_update = Instant::now();
-    }
-    // println!();
-}
-
-fn disk_io_percent_from_raw() {
-    // let read_ticks_weighted_ms_prev = if read_ticks_weighted_ms < disk_stat.read_ticks_weighted_ms {
-    //     read_ticks_weighted_ms
-    // } else {
-    //     disk_stat.read_ticks_weighted_ms
-    // };
-
-    // let write_ticks_weighted_ms_prev =
-    //     if write_ticks_weighted_ms < disk_stat.write_ticks_weighted_ms {
-    //         write_ticks_weighted_ms
-    //     } else {
-    //         disk_stat.write_ticks_weighted_ms
-    //     };
-
-    // let discard_ticks_weighted_ms_prev =
-    //     if discard_ticks_weighted_ms < disk_stat.discard_ticks_weighted_ms {
-    //         discard_ticks_weighted_ms
-    //     } else {
-    //         disk_stat.discard_ticks_weighted_ms
-    //     };
-
-    // let flush_ticks_weighted_ms_prev =
-    //     if flush_ticks_weighted_ms < disk_stat.flush_ticks_weighted_ms {
-    //         flush_ticks_weighted_ms
-    //     } else {
-    //         disk_stat.flush_ticks_weighted_ms
-    //     };
-
-    // let elapsed = disk_stat.read_time_ms.elapsed().as_secs_f32();
-
-    // let delta_read_ticks_weighted_ms = read_ticks_weighted_ms - read_ticks_weighted_ms_prev;
-    // let delta_write_ticks_weighted_ms = write_ticks_weighted_ms - write_ticks_weighted_ms_prev;
-    // let delta_discard_ticks_weighted_ms =
-    //     discard_ticks_weighted_ms - discard_ticks_weighted_ms_prev;
-    // let delta_flush_ticks_weighted_ms = flush_ticks_weighted_ms - flush_ticks_weighted_ms_prev;
-    // let delta_ticks_weighted_ms = delta_read_ticks_weighted_ms
-    //     + delta_write_ticks_weighted_ms
-    //     + delta_discard_ticks_weighted_ms
-    //     + delta_flush_ticks_weighted_ms;
-
-    // // Arbitrary math is arbitrary
-    // let busy_percent: f32 = (delta_ticks_weighted_ms as f32 / (elapsed * 8.0)).min(100.);
-}
-
-pub struct MyDiskInfo {
-    pub name: String,
-    pub mount_point: String,
-    pub device: String,
-    pub last_io_time: u64,
-    pub last_update: Instant,
-    pub io_history: Arc<CircleVec<u64, 100>>,
-}
-
-pub fn init_system(appdata: &mut MyApp) {
-    appdata.disks.refresh(true);
-
-    // println!();
-    // for ele in appdata.disks.iter() {
-    //     dbg!(ele);
-    //     dbg!(ele.name());
-    //     dbg!(&ele.mount_point());
-    //     dbg!(ele.file_system());
-    //     println!();
-    // }
-    // println!();
-
-    let bdl = BlockDevice::list().unwrap();
-    // for b in &bdl {
-    //     println!("{b:?}");
-    // }
-    // println!();
-
-    let ml = Mount::list().unwrap().collect_vec();
-    // for m in &ml {
-    //     println!("{m:?}");
-    //     println!("{}", m.mountpoint.to_str().unwrap());
-    // }
-    // println!();
-
-    // let diskstats = diskstats().unwrap();
-    // for disk in &diskstats {
-    //     println!("{disk:?}");
-    // }
-
-    // println!();
-
-    let mut diskmap: HashMap<String, String> = HashMap::new();
-
-    let mut vec = Vec::new();
-
-    for d in get_filtered_disks(appdata) {
-        let m = d.mount_point().to_str().unwrap();
-        // println!("{m}");
-        let mount = ml
-            .iter()
-            .find(|mlm| mlm.mountpoint.to_str().unwrap().replace("\\040", " ") == m)
-            .unwrap();
-        // println!("{m} -> {mount:?}");
-        let blockdev;
-        if mount.device.contains("/by-uuid/") {
-            let uuid = mount.device.replace("/dev/disk/by-uuid/", "");
-
-            blockdev = bdl
-                .iter()
-                .find(|bd| &bd.uuid.clone().unwrap_or_default() == &uuid);
-        } else {
-            blockdev = bdl
-                .iter()
-                .find(|bd| bd.fullname.to_str().unwrap() == mount.device);
-        }
-        if let Some(bd) = blockdev {
-            // println!("{m} -> {mount:?} -> {blockdev:?} -> {}", bd.name);
-            diskmap.insert(m.to_string(), bd.name.clone());
-
-            let disk = MyDiskInfo {
-                name: bd.name.clone(),
-                mount_point: m.to_string(),
-                device: bd.name.clone(),
-                last_io_time: 0,
-                last_update: Instant::now(),
-                io_history: CircleVec::new(),
-            };
-            vec.push(disk);
-        }
-        // println!();
-    }
-
-    appdata.disk_data.append(&mut vec);
-
-    appdata.system_status.refresh_cpu_all();
-
-    // iterate over disks and add disk io time counters
-    let mut drive_letters = Vec::new();
-    for d in get_filtered_disks(appdata) {
-        let drive_letter = d.mount_point().to_str().unwrap().replace('\\', "");
-        drive_letters.push(drive_letter.clone());
-    }
-
-    // for drive_letter in drive_letters {
-    //     appdata
-    //         .disk_time_value_handle_map
-    //         .push((drive_letter, 0, 0.0));
-    // }
-}
+// pub fn init_system(appdata: &mut MyApp) {
+//     init_disks(appdata);
+// }
 
 pub fn get_windows_glass_color(use_plain_blackground: bool) -> Color32 {
     if use_plain_blackground {
@@ -1091,8 +881,8 @@ pub fn refresh(appdata: &mut MyApp) {
     refresh_gpu(appdata);
     step_timing(appdata, CurrentStep::UpdateGPU);
 
-    appdata.disks.refresh(true);
-    step_timing(appdata, CurrentStep::UpdateSystemDisk);
+    // appdata.disks.refresh(true);
+    // step_timing(appdata, CurrentStep::UpdateSystemDisk);
 
     refresh_system_memory(appdata);
     step_timing(appdata, CurrentStep::UpdateSystemMemory);
@@ -1100,14 +890,16 @@ pub fn refresh(appdata: &mut MyApp) {
     refresh_networks(appdata);
     step_timing(appdata, CurrentStep::UpdateSystemNetwork);
 
-    refresh_disk_io_time(appdata);
-    step_timing(appdata, CurrentStep::UpdateIoTime);
+    // refresh_disk_io_time(appdata);
+    // step_timing(appdata, CurrentStep::UpdateIoTime);
 
     refresh_processes(appdata);
     step_timing(appdata, CurrentStep::UpdateSystemProcess);
 
     refresh_battery(appdata);
     step_timing(appdata, CurrentStep::UpdateBattery);
+
+    refresh_disks(appdata);
 }
 
 fn refresh_processes(appdata: &mut MyApp) {
@@ -1287,6 +1079,136 @@ pub async fn loop_amd_temp_sensor(shared_data: Arc<Mutex<Option<f32>>>) {
             }
         }
         thread::sleep(Duration::from_secs(1));
+    }
+}
+
+// pub async fn loop_iostat_disk_util() {
+//     loop {
+//         // sensors k10temp-pci-00c3 -j
+//         if let Ok(output) = Command::new("iostat")
+//             .arg("-x")
+//             .arg("-o")
+//             .arg("JSON")
+//             .output()
+//             .await
+//         {
+//             if dbg!(&output).status.success() {
+//                 let stdout = String::from_utf8_lossy(&output.stdout);
+//                 let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+//                 if let Some(temp) = json["sysstat"]["hosts"][0]["statistics"][0]["disk"].as_array()
+//                 {
+//                     for t in temp {
+//                         let name = t["disk_device"].as_str().unwrap_or_default();
+//                         let util = t["util"].as_f64().unwrap_or_default();
+//                         println!("{name}: {util}");
+//                     }
+//                     // let mut data = shared_data.lock().unwrap();
+//                     // *data = Some(temp as f32);
+//                 }
+//             } else {
+//                 eprintln!("Failed to execute command 2");
+//             }
+//         } else {
+//             eprintln!("Failed to execute command 1");
+//         }
+//         thread::sleep(Duration::from_secs(1));
+//     }
+// }
+
+pub fn loop_iostat_disk_util(shared_data: Arc<Mutex<HashMap<String, f32>>>) {
+    loop {
+        // Start nvidia-smi in continuous mode
+        let mut child = match std::process::Command::new("iostat")
+            .args(&["-x", "-d", "--compact", "1"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+        {
+            Ok(child) => child,
+            Err(e) => {
+                eprintln!("Failed to start iostat: {}", e);
+                thread::sleep(Duration::from_secs(5));
+                continue;
+            }
+        };
+
+        let stdout = match child.stdout.take() {
+            Some(stdout) => stdout,
+            None => {
+                eprintln!("Failed to capture stdout");
+                thread::sleep(Duration::from_secs(5));
+                continue;
+            }
+        };
+
+        let stderr = match child.stderr.take() {
+            Some(stderr) => stderr,
+            None => {
+                eprintln!("Failed to capture stderr");
+                thread::sleep(Duration::from_secs(5));
+                continue;
+            }
+        };
+
+        // Use BufReader to read output line by line
+        let reader = BufReader::new(stdout);
+
+        // Clone shared data for error handling
+        // let shared_data_clone = Arc::clone(&shared_data);
+
+        // Handle stderr in a separate thread to avoid blocking
+        thread::spawn(move || {
+            let err_reader = BufReader::new(stderr);
+            for e in err_reader.lines() {
+                eprintln!("nvidia-smi stderr: {:?}", e);
+            }
+        });
+
+        // Read and parse each line asynchronously
+        for line in reader.lines() {
+            match line {
+                Ok(line) => {
+                    // Parse the line to extract device data
+                    // dbg!(&line);
+                    if line.is_empty() {
+                        continue;
+                    }
+                    if line.starts_with("Device") {
+                        continue;
+                    }
+                    if line.starts_with("Linux") {
+                        continue;
+                    }
+                    let mut s = line.trim().split_whitespace();
+                    let name = s.next().unwrap();
+                    let util = s.last().unwrap().replace(",", ".");
+                    let util: f32 = util.parse().unwrap();
+
+                    let mut data = shared_data.lock().unwrap();
+                    data.insert(name.to_string(), util);
+                    drop(data);
+                }
+                Err(e) => {
+                    eprintln!("Error reading iostat output: {}", e);
+                    break; // Exit the loop to restart the command
+                }
+            }
+        }
+
+        // If the loop exits, attempt to kill the child process
+        match child.kill() {
+            Ok(_) => eprintln!("Killed iostat process."),
+            Err(e) => eprintln!("Failed to kill iostat: {}", e),
+        }
+
+        // Wait for the child process to exit
+        match child.wait() {
+            Ok(status) => eprintln!("iostat exited with status: {}", status),
+            Err(e) => eprintln!("Failed to wait on iostat: {}", e),
+        }
+
+        // Sleep before restarting
+        thread::sleep(Duration::from_secs(5));
     }
 }
 

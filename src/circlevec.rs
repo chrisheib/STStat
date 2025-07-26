@@ -1,11 +1,13 @@
 use parking_lot::Mutex;
 use std::{fmt::Debug, sync::Arc, vec::Vec};
 
+#[derive(Debug)]
 pub struct CircleVec<T, const N: usize> {
     capacity: usize,
     inner_vec: Mutex<InnerVec<T, N>>,
 }
 
+#[derive(Debug)]
 pub struct InnerVec<T, const N: usize> {
     vec: [T; N],
     pointer: usize,

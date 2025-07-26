@@ -12,6 +12,7 @@ use std::{
 use crate::settings::get_screen_size;
 use chrono::{DateTime, Duration, Local, NaiveDateTime};
 use circlevec::CircleVec;
+use disk::{MyBlockDeviceStat, MyDiskInfo};
 use eframe::{
     egui::{self, Label, Layout, RichText, ScrollArea, ViewportBuilder, Visuals},
     epaint::Color32,
@@ -22,8 +23,8 @@ use self_update::{backends::github::Update, cargo_crate_version};
 use settings::{show_settings, MySettings};
 use sysinfo::{Disks, Networks, System};
 use system_info::{
-    get_windows_glass_color, init_system, loop_amd_temp_sensor, refresh, refresh_color,
-    run_nvidia_smi, GpuData, MyDiskInfo,
+    get_windows_glass_color, loop_amd_temp_sensor, loop_iostat_disk_util, refresh, refresh_color,
+    run_nvidia_smi, GpuData,
 };
 use tokio::{runtime::Runtime, time::sleep};
 
@@ -36,6 +37,7 @@ mod components;
 // mod process;
 mod settings;
 // mod sidebar;
+mod disk;
 mod ping;
 mod system_info;
 
@@ -70,6 +72,10 @@ fn main() -> Result<(), eframe::Error> {
     // let thread_update_available = update_available.clone();
     // thread::spawn(move || check_update_thread(thread_update_available));
 
+    let disk_util_data = Arc::new(std::sync::Mutex::new(HashMap::new()));
+    let thread_disk_util = disk_util_data.clone();
+    thread::spawn(move || loop_iostat_disk_util(thread_disk_util));
+
     let gpu_data = Arc::new(std::sync::Mutex::new(GpuData::default()));
     let thread_gpu = gpu_data.clone();
     thread::spawn(move || run_nvidia_smi(thread_gpu));
@@ -78,7 +84,7 @@ fn main() -> Result<(), eframe::Error> {
     let thread_cpu_temp = cpu_temp.clone();
     rt.spawn(loop_amd_temp_sensor(thread_cpu_temp));
 
-    let mut appstate = MyApp {
+    let appstate = MyApp {
         system_status: System::new_all(),
         ping_buffer,
         firstupdate: false,
@@ -114,8 +120,10 @@ fn main() -> Result<(), eframe::Error> {
         battery_enabled: false,
         battery_level_next_update: Default::default(),
         networks: Networks::new_with_refreshed_list(),
-        disks: Disks::new_with_refreshed_list(),
-        disk_data: vec![],
+        raw_disks: Disks::new_with_refreshed_list(),
+        disks: vec![],
+        blockdevices: vec![],
+        current_disk_util_data: disk_util_data,
         // monitors,
         last_update_timestamp: Instant::now(),
         last_joules: 0,
@@ -166,7 +174,7 @@ fn main() -> Result<(), eframe::Error> {
         ..Default::default()
     };
 
-    init_system(&mut appstate);
+    // init_system(&mut appstate);
 
     eframe::run_native(
         INTERNAL_WINDOW_TITLE, // title used for identifying window to grab handle
@@ -296,8 +304,10 @@ pub struct MyApp {
     pub battery_enabled: bool,
     pub battery_level_next_update: NaiveDateTime,
     pub networks: Networks,
-    pub disks: Disks,
-    pub disk_data: Vec<MyDiskInfo>,
+    pub raw_disks: Disks,
+    pub disks: Vec<MyDiskInfo>,
+    pub blockdevices: Vec<MyBlockDeviceStat>,
+    pub current_disk_util_data: Arc<std::sync::Mutex<HashMap<String, f32>>>,
     pub last_update_timestamp: Instant,
     pub last_joules: u128, // pub monitors: Vec<MyMonitor>,
     pub coretemps: Vec<(String, f32)>,
