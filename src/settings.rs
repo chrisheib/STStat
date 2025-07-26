@@ -31,6 +31,7 @@ pub struct InnerSettings {
     pub track_timings: bool,
     pub max_cpu_power: f64,
     pub use_plain_dark_background: bool,
+    pub hide_cores: bool,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Clone)]
@@ -98,6 +99,8 @@ pub fn show_settings(appdata: &mut MyApp, ui: &mut Ui, scale_override: Option<f3
             &mut settings.current_settings.use_plain_dark_background,
             "Use plain dark background color",
         );
+        ui.separator();
+        ui.checkbox(&mut settings.current_settings.hide_cores, "Hide CPU Cores");
         ui.separator();
         ui.checkbox(&mut settings.current_settings.track_timings, "trace perf");
         if ui.button("save trace").clicked() {

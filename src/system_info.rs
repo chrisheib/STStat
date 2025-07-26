@@ -381,28 +381,32 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
             .desired_width(SIDEBAR_WIDTH - 8.0),
     );
 
-    Grid::new("cpu_grid_cores")
-        .num_columns(2)
-        .spacing([2.0, 0.0])
-        .striped(false)
-        .show(ui, |ui| {
-            for (_i, cpu_chunk) in appdata.system_status.cpus().chunks(2).enumerate() {
-                for cpu in cpu_chunk {
-                    // let temp = appdata.coretemps.get(i).map(|o| o.1).unwrap_or_default();
-                    let usage = cpu.cpu_usage();
-                    ui.add(
-                        EdgyProgressBar::new(usage / 100.0)
-                            .desired_width(SIDEBAR_WIDTH / 2.0 - 5.0)
-                            .text(
-                                // RichText::new(format!("{usage:.0}% {temp:.0} °C"))
-                                RichText::new(format!("{usage:.0}%")).small().strong(),
-                            )
-                            .compact(true),
-                    );
+    let settings = appdata.settings.lock();
+    if !settings.current_settings.hide_cores {
+        Grid::new("cpu_grid_cores")
+            .num_columns(2)
+            .spacing([2.0, 0.0])
+            .striped(false)
+            .show(ui, |ui| {
+                for (_i, cpu_chunk) in appdata.system_status.cpus().chunks(2).enumerate() {
+                    for cpu in cpu_chunk {
+                        // let temp = appdata.coretemps.get(i).map(|o| o.1).unwrap_or_default();
+                        let usage = cpu.cpu_usage();
+                        ui.add(
+                            EdgyProgressBar::new(usage / 100.0)
+                                .desired_width(SIDEBAR_WIDTH / 2.0 - 5.0)
+                                .text(
+                                    // RichText::new(format!("{usage:.0}% {temp:.0} °C"))
+                                    RichText::new(format!("{usage:.0}%")).small().strong(),
+                                )
+                                .compact(true),
+                        );
+                    }
+                    ui.end_row();
                 }
-                ui.end_row();
-            }
-        });
+            });
+    }
+    drop(settings);
 
     let cpu_line = Line::new(
         (0..appdata.cpu_buffer.capacity())
@@ -657,19 +661,7 @@ fn add_process_table(
                             || ui
                                 .add(
                                     Label::new(
-                                        RichText::new(format!(
-                                            "{}{}",
-                                            p.name,
-                                            0 // FIXME
-
-                                              // if p.count > 1 {
-                                              //     format!(" ×{}", p.count)
-                                              // } else {
-                                              //     "".to_string()
-                                              // }
-                                        ))
-                                        .small()
-                                        .strong(),
+                                        RichText::new(format!("{}", p.name)).small().strong(),
                                     )
                                     .wrap_mode(eframe::egui::TextWrapMode::Truncate),
                                 )
