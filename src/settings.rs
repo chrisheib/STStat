@@ -79,12 +79,7 @@ pub fn show_settings(appdata: &mut MyApp, ui: &mut Ui, scale_override: Option<f3
     if appdata.show_settings {
         ui.separator();
         ui.label("Show Networks:");
-        for (net, _) in &appdata.networks {
-            let e = settings
-                .current_settings
-                .networks
-                .entry(net.to_string())
-                .or_insert(false);
+        for (net, e) in &mut settings.current_settings.networks {
             ui.checkbox(e, net);
         }
         ui.separator();

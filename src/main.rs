@@ -3,7 +3,7 @@
 
 use std::{
     collections::HashMap,
-    panic,
+    panic, str,
     sync::{atomic::AtomicBool, Arc},
     thread,
     time::Instant,
@@ -17,11 +17,12 @@ use eframe::{
     egui::{self, Label, Layout, RichText, ScrollArea, ViewportBuilder, Visuals},
     epaint::Color32,
 };
+use network::{init_networks, NetworkTracker};
 use parking_lot::Mutex;
 use ping::tcp_ping_tokio;
 use self_update::{backends::github::Update, cargo_crate_version};
 use settings::{show_settings, MySettings};
-use sysinfo::{Disks, Networks, System};
+use sysinfo::{Disks, System};
 use system_info::{
     get_windows_glass_color, loop_amd_temp_sensor, loop_iostat_disk_util, refresh, refresh_color,
     run_nvidia_smi, GpuData,
@@ -38,6 +39,7 @@ mod components;
 mod settings;
 // mod sidebar;
 mod disk;
+mod network;
 mod ping;
 mod system_info;
 
@@ -84,7 +86,7 @@ fn main() -> Result<(), eframe::Error> {
     let thread_cpu_temp = cpu_temp.clone();
     rt.spawn(loop_amd_temp_sensor(thread_cpu_temp));
 
-    let appstate = MyApp {
+    let mut appstate = MyApp {
         system_status: System::new_all(),
         ping_buffer,
         firstupdate: false,
@@ -104,8 +106,6 @@ fn main() -> Result<(), eframe::Error> {
         current_frame_start: Instant::now(),
         cur_ram: 0.0,
         total_ram: 0.0,
-        net_up_buffer: Default::default(),
-        net_down_buffer: Default::default(),
         gpu_buffer: CircleVec::new(),
         gpu_mem_buffer: CircleVec::new(),
         gpu_power_buffer: CircleVec::new(),
@@ -119,7 +119,8 @@ fn main() -> Result<(), eframe::Error> {
         battery_level_buffer: CircleVec::new(),
         battery_enabled: false,
         battery_level_next_update: Default::default(),
-        networks: Networks::new_with_refreshed_list(),
+        // networks: Networks::new_with_refreshed_list(),
+        networks: Default::default(),
         raw_disks: Disks::new_with_refreshed_list(),
         disks: vec![],
         blockdevices: vec![],
@@ -131,6 +132,8 @@ fn main() -> Result<(), eframe::Error> {
         // nvml_device: nvml,
         cpu_temp_thread: cpu_temp,
     };
+
+    init_networks(&mut appstate);
 
     get_screen_size(&appstate, None);
 
@@ -287,8 +290,6 @@ pub struct MyApp {
     pub current_frame_start: Instant,
     pub cur_ram: f32,
     pub total_ram: f32,
-    pub net_up_buffer: HashMap<String, Arc<CircleVec<f64, 100>>>,
-    pub net_down_buffer: HashMap<String, Arc<CircleVec<f64, 100>>>,
     pub gpu_buffer: Arc<CircleVec<f32, 100>>,
     pub gpu_mem_buffer: Arc<CircleVec<f64, 100>>,
     pub gpu_power_buffer: Arc<CircleVec<f64, 100>>,
@@ -303,7 +304,7 @@ pub struct MyApp {
     pub battery_level_buffer: Arc<CircleVec<f64, 120>>,
     pub battery_enabled: bool,
     pub battery_level_next_update: NaiveDateTime,
-    pub networks: Networks,
+    // pub networks: Networks,
     pub raw_disks: Disks,
     pub disks: Vec<MyDiskInfo>,
     pub blockdevices: Vec<MyBlockDeviceStat>,
@@ -313,6 +314,7 @@ pub struct MyApp {
     pub coretemps: Vec<(String, f32)>,
     // pub nvml_device: Nvml,
     pub cpu_temp_thread: Arc<std::sync::Mutex<Option<f32>>>,
+    pub networks: Vec<NetworkTracker>,
 }
 
 // #[derive(Serialize, Deserialize, Debug)]

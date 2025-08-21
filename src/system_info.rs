@@ -12,10 +12,10 @@ use std::{
 
 use crate::{
     bytes_format::format_bytes,
-    circlevec::CircleVec,
     color::{auto_color_dark, get_base_background},
     components::edgy_progress::EdgyProgressBar,
     disk::refresh_disks,
+    network::refresh_networks,
     step_timing, CurrentStep, MyApp, SIDEBAR_WIDTH,
 };
 use eframe::{
@@ -35,7 +35,7 @@ use eframe::{
 use egui_extras::{Column, TableBuilder};
 use egui_plot::{Line, Plot, PlotPoints};
 use itertools::Itertools;
-use sysinfo::{CpuRefreshKind, Pid};
+use sysinfo::{CpuRefreshKind, Pid, ProcessRefreshKind};
 use tokio::process::Command;
 
 pub fn set_system_info_components(appdata: &mut MyApp, ui: &mut Ui) {
@@ -53,8 +53,8 @@ pub fn set_system_info_components(appdata: &mut MyApp, ui: &mut Ui) {
 fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
     ui.vertical_centered(|ui| ui.label("Networks"));
 
-    for (interface_name, data) in filter_networks(appdata) {
-        ui.push_id(format!("network graph {interface_name}"), |ui| {
+    for net in &appdata.networks {
+        ui.push_id(format!("network graph {}", net.interface), |ui| {
             let table = TableBuilder::new(ui)
                 .striped(true)
                 .columns(Column::exact((SIDEBAR_WIDTH - 10.0) * 0.4), 2);
@@ -62,7 +62,11 @@ fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
                 header.col(|ui| {
                     ui.add(
                         Label::new(
-                            RichText::new(format!("⬆ {}", format_bytes(data.tx))).size(12.0),
+                            RichText::new(format!(
+                                "⬆ {}",
+                                format_bytes(*net.history_up.read().last().unwrap())
+                            ))
+                            .size(12.0),
                         )
                         .wrap_mode(eframe::egui::TextWrapMode::Extend),
                     );
@@ -70,7 +74,11 @@ fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
                 header.col(|ui| {
                     ui.add(
                         Label::new(
-                            RichText::new(format!("⬇ {}", format_bytes(data.rx))).size(12.0),
+                            RichText::new(format!(
+                                "⬇ {}",
+                                format_bytes(*net.history_down.read().last().unwrap())
+                            ))
+                            .size(12.0),
                         )
                         .wrap_mode(eframe::egui::TextWrapMode::Extend),
                     );
@@ -78,31 +86,23 @@ fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
             });
         });
 
-        let up_buffer = appdata
-            .net_up_buffer
-            .entry(interface_name.clone())
-            .or_insert(CircleVec::new());
-        let up = up_buffer.read();
+        ui.add_space(3.0);
+
+        let up = net.history_up.read();
 
         let up_line = Line::new(
-            (0..up_buffer.capacity())
+            (0..net.history_up.capacity())
                 .map(|i| [i as f64, { up[i] }])
                 .collect::<PlotPoints>(),
         );
 
-        let down_buffer = appdata
-            .net_down_buffer
-            .entry(interface_name.clone())
-            .or_insert(CircleVec::new());
-        let down = down_buffer.read();
+        let down = net.history_down.read();
 
         let down_line = Line::new(
-            (0..down_buffer.capacity())
+            (0..net.history_down.capacity())
                 .map(|i| [i as f64, { down[i] }])
                 .collect::<PlotPoints>(),
         );
-
-        ui.add_space(3.0);
 
         let max_down = down
             .iter()
@@ -116,7 +116,7 @@ fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
             .unwrap_or_default();
 
         add_graph(
-            &format!("network-{interface_name}"),
+            &format!("network-{}", net.interface),
             ui,
             vec![down_line, up_line],
             &[14.0 * 1024.0 * 1024.0, max_down, max_up],
@@ -124,31 +124,6 @@ fn show_network(appdata: &mut MyApp, ui: &mut Ui) {
     }
     ui.separator();
     step_timing(appdata, crate::CurrentStep::Network);
-}
-
-fn filter_networks(appdata: &mut MyApp) -> Vec<(String, MyNetworkData)> {
-    appdata
-        .networks
-        .iter()
-        .filter(|i| {
-            *appdata
-                .settings
-                .lock()
-                .current_settings
-                .networks
-                .entry(i.0.to_string())
-                .or_default()
-        })
-        .map(|(n, d)| {
-            (
-                n.to_string(),
-                MyNetworkData {
-                    tx: d.transmitted() as f64,
-                    rx: d.received() as f64,
-                },
-            )
-        })
-        .collect_vec()
 }
 
 #[derive(Default, Debug, Clone)]
@@ -895,9 +870,15 @@ pub fn refresh(appdata: &mut MyApp) {
 }
 
 fn refresh_processes(appdata: &mut MyApp) {
-    appdata
-        .system_status
-        .refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+    // appdata
+    //     .system_status
+    //     .refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+
+    appdata.system_status.refresh_processes_specifics(
+        sysinfo::ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().with_cpu().with_memory(),
+    );
 
     // for (pid, p) in appdata.system_status.processes() {
     //     println!(
@@ -923,27 +904,6 @@ pub fn refresh_color(appdata: &mut MyApp, ui: &mut Ui) {
             .current_settings
             .use_plain_dark_background,
     );
-}
-
-pub struct MyNetworkData {
-    tx: f64,
-    rx: f64,
-}
-
-fn refresh_networks(appdata: &mut MyApp) {
-    appdata.networks.refresh(true);
-    for (name, data) in filter_networks(appdata) {
-        let e = appdata
-            .net_down_buffer
-            .entry(name.clone())
-            .or_insert(CircleVec::new());
-        e.add(data.rx);
-        let e = appdata
-            .net_up_buffer
-            .entry(name.clone())
-            .or_insert(CircleVec::new());
-        e.add(data.tx);
-    }
 }
 
 fn refresh_system_memory(appdata: &mut MyApp) {
