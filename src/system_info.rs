@@ -16,12 +16,15 @@ use crate::{
     components::edgy_progress::EdgyProgressBar,
     disk::refresh_disks,
     network::refresh_networks,
-    step_timing, CurrentStep, MyApp, SIDEBAR_WIDTH,
+    step_timing,
+    tasks::{schedule_tasks_refresh, tasks_browser_url, tasks_status_line},
+    CurrentStep, MyApp, SIDEBAR_WIDTH,
 };
 use eframe::{
     egui::{
-        // plot::{Line, Plot, PlotPoints},
         vec2,
+        // plot::{Line, Plot, PlotPoints},
+        CursorIcon,
         Grid,
         Label,
         Layout,
@@ -46,6 +49,7 @@ pub fn set_system_info_components(appdata: &mut MyApp, ui: &mut Ui) {
     show_drives(appdata, ui);
     show_network(appdata, ui);
     show_ping(appdata, ui);
+    show_tasks(appdata, ui);
     show_processes(appdata, ui);
     show_battery(appdata, ui);
 }
@@ -358,28 +362,33 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
 
     let settings = appdata.settings.lock();
     if !settings.current_settings.hide_cores {
-        Grid::new("cpu_grid_cores")
-            .num_columns(2)
-            .spacing([2.0, 0.0])
-            .striped(false)
-            .show(ui, |ui| {
-                for (_i, cpu_chunk) in appdata.system_status.cpus().chunks(2).enumerate() {
-                    for cpu in cpu_chunk {
-                        // let temp = appdata.coretemps.get(i).map(|o| o.1).unwrap_or_default();
-                        let usage = cpu.cpu_usage();
-                        ui.add(
-                            EdgyProgressBar::new(usage / 100.0)
-                                .desired_width(SIDEBAR_WIDTH / 2.0 - 5.0)
-                                .text(
-                                    // RichText::new(format!("{usage:.0}% {temp:.0} °C"))
-                                    RichText::new(format!("{usage:.0}%")).small().strong(),
-                                )
-                                .compact(true),
-                        );
+        ui.scope(|ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            ui.spacing_mut().interact_size.y = 4.0;
+
+            Grid::new("cpu_grid_cores")
+                .num_columns(2)
+                .spacing([2.0, 0.0])
+                .striped(false)
+                .show(ui, |ui| {
+                    for cpu_chunk in appdata.system_status.cpus().chunks(2) {
+                        for cpu in cpu_chunk {
+                            // let temp = appdata.coretemps.get(i).map(|o| o.1).unwrap_or_default();
+                            let usage = cpu.cpu_usage();
+                            ui.add(
+                                EdgyProgressBar::new(usage / 100.0)
+                                    .desired_width(SIDEBAR_WIDTH / 2.0 - 5.0)
+                                    .text(
+                                        // RichText::new(format!("{usage:.0}% {temp:.0} °C"))
+                                        RichText::new(format!("{usage:.0}%")).small().strong(),
+                                    )
+                                    .compact(true),
+                            );
+                        }
+                        ui.end_row();
                     }
-                    ui.end_row();
-                }
-            });
+                });
+        });
     }
     drop(settings);
 
@@ -416,6 +425,73 @@ fn show_cpu(appdata: &mut MyApp, ui: &mut Ui) {
         &[100.5],
     );
     step_timing(appdata, crate::CurrentStep::CPUGraph);
+
+    ui.separator();
+}
+
+/// Renders task items from Google Tasks to provide a compact, actionable queue.
+fn show_tasks(appdata: &mut MyApp, ui: &mut Ui) {
+    let settings = appdata.settings.lock().current_settings.clone();
+    if !settings.tasks_enabled {
+        return;
+    }
+
+    let tasks_page_url = tasks_browser_url(&settings);
+    let block = ui.scope(|ui| {
+        ui.vertical_centered(|ui| ui.label("Tasks"));
+
+        let tasks = appdata.tasks_state.lock().items.clone();
+        if tasks.is_empty() {
+            ui.label(RichText::new("No upcoming tasks").small());
+            ui.label(
+                RichText::new(tasks_status_line(&appdata.tasks_state))
+                    .small()
+                    .weak(),
+            );
+            return;
+        }
+
+        Grid::new("tasks_grid")
+            .num_columns(1)
+            .spacing([2.0, 2.0])
+            .striped(true)
+            .show(ui, |ui| {
+                for (shown, task) in tasks.into_iter().enumerate() {
+                    if shown >= settings.tasks_max_items {
+                        break;
+                    }
+
+                    let label = if let Some(due) = task.due {
+                        format!("{}  {}", due.format("%d.%m.%y"), task.title)
+                    } else {
+                        format!("--.--.--  {}", task.title)
+                    };
+
+                    ui.add(
+                        Label::new(RichText::new(label).small().strong())
+                            .wrap_mode(eframe::egui::TextWrapMode::Truncate),
+                    );
+                    ui.end_row();
+                }
+            });
+
+        ui.label(
+            RichText::new(tasks_status_line(&appdata.tasks_state))
+                .small()
+                .weak(),
+        );
+    });
+
+    let response = ui
+        .interact(
+            block.response.rect,
+            ui.id().with("tasks_block_link"),
+            Sense::click(),
+        )
+        .on_hover_cursor(CursorIcon::PointingHand);
+    if response.clicked() {
+        let _ = webbrowser::open(tasks_page_url);
+    }
 
     ui.separator();
 }
@@ -867,6 +943,7 @@ pub fn refresh(appdata: &mut MyApp) {
     step_timing(appdata, CurrentStep::UpdateBattery);
 
     refresh_disks(appdata);
+    schedule_tasks_refresh(appdata);
 }
 
 fn refresh_processes(appdata: &mut MyApp) {

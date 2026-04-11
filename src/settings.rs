@@ -10,6 +10,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     // sidebar::{dispose_sidebar, setup_sidebar},
+    tasks::{
+        cancel_sign_in, has_oauth_client_config, is_awaiting_callback,
+        oauth_client_source_label, sign_out, start_sign_in, tasks_status_line,
+    },
     CurrentStep,
     MyApp,
     SIDEBAR_WIDTH,
@@ -21,7 +25,7 @@ pub struct MySettings {
     pub current_settings: InnerSettings,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize, PartialEq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(default)]
 pub struct InnerSettings {
     pub networks: HashMap<String, bool>,
@@ -32,6 +36,29 @@ pub struct InnerSettings {
     pub max_cpu_power: f64,
     pub use_plain_dark_background: bool,
     pub hide_cores: bool,
+    pub tasks_enabled: bool,
+    pub tasks_list_id: String,
+    pub tasks_max_items: usize,
+    pub tasks_refresh_seconds: u64,
+}
+
+impl Default for InnerSettings {
+    fn default() -> Self {
+        Self {
+            networks: HashMap::new(),
+            display_right: false,
+            screen_id: 0,
+            location: Location::default(),
+            track_timings: false,
+            max_cpu_power: 0.0,
+            use_plain_dark_background: false,
+            hide_cores: false,
+            tasks_enabled: false,
+            tasks_list_id: "@default".to_string(),
+            tasks_max_items: 5,
+            tasks_refresh_seconds: 60,
+        }
+    }
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Clone)]
@@ -96,6 +123,61 @@ pub fn show_settings(appdata: &mut MyApp, ui: &mut Ui, scale_override: Option<f3
         );
         ui.separator();
         ui.checkbox(&mut settings.current_settings.hide_cores, "Hide CPU Cores");
+        ui.separator();
+        ui.checkbox(
+            &mut settings.current_settings.tasks_enabled,
+            "Enable Google Tasks",
+        );
+        ui.label("Google Tasks List ID:");
+        ui.text_edit_singleline(&mut settings.current_settings.tasks_list_id);
+        ui.label("Max shown tasks:");
+        ui.add(DragValue::new(&mut settings.current_settings.tasks_max_items).range(1..=20));
+        ui.label("Tasks refresh seconds:");
+        ui.add(
+            DragValue::new(&mut settings.current_settings.tasks_refresh_seconds).range(15..=600),
+        );
+        let tasks_enabled = settings.current_settings.tasks_enabled;
+        drop(settings);
+
+        if tasks_enabled {
+            ui.label(tasks_status_line(&appdata.tasks_state));
+
+            let has_secret = has_oauth_client_config();
+            ui.label(oauth_client_source_label());
+            if !has_secret {
+                ui.label(
+                    eframe::egui::RichText::new(
+                        "No usable OAuth client configuration found. Sign in is disabled.",
+                    )
+                    .color(eframe::epaint::Color32::LIGHT_RED)
+                    .small(),
+                );
+            }
+
+            if is_awaiting_callback(&appdata.tasks_state) {
+                // Keep the elapsed waiting time in the status line fresh.
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_millis(250));
+            }
+
+            if is_awaiting_callback(&appdata.tasks_state) {
+                if ui.button("Cancel login").clicked() {
+                    cancel_sign_in(&appdata.tasks_state);
+                }
+            } else if ui
+                .add_enabled(has_secret, eframe::egui::Button::new("Sign in with Google"))
+                .clicked()
+            {
+                start_sign_in(appdata);
+                ui.ctx().request_repaint();
+            }
+
+            if ui.button("Sign out").clicked() {
+                sign_out(&appdata.tasks_state);
+            }
+        }
+
+        settings = appdata.settings.lock();
         ui.separator();
         ui.checkbox(&mut settings.current_settings.track_timings, "trace perf");
         if ui.button("save trace").clicked() {

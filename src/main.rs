@@ -27,6 +27,7 @@ use system_info::{
     get_windows_glass_color, loop_amd_temp_sensor, loop_iostat_disk_util, refresh, refresh_color,
     run_nvidia_smi, GpuData,
 };
+use tasks::{bootstrap_auth_state, TasksState};
 use tokio::{runtime::Runtime, time::sleep};
 
 // mod autostart;
@@ -42,6 +43,7 @@ mod disk;
 mod network;
 mod ping;
 mod system_info;
+mod tasks;
 
 // On read problems, run: lodctr /r
 pub const UPDATE_INTERVAL_MILLIS: i64 = 1000;
@@ -50,6 +52,7 @@ pub const SIDEBAR_WIDTH: f32 = 130.0;
 
 fn main() -> Result<(), eframe::Error> {
     color_eyre::install().unwrap();
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
     panic::set_hook(Box::new(|p| {
         println!("Custom panic hook: {p}");
@@ -131,7 +134,10 @@ fn main() -> Result<(), eframe::Error> {
         coretemps: vec![],
         // nvml_device: nvml,
         cpu_temp_thread: cpu_temp,
+        tasks_state: Arc::new(Mutex::new(TasksState::default())),
     };
+
+    bootstrap_auth_state(&mut appstate);
 
     init_networks(&mut appstate);
 
@@ -315,6 +321,7 @@ pub struct MyApp {
     // pub nvml_device: Nvml,
     pub cpu_temp_thread: Arc<std::sync::Mutex<Option<f32>>>,
     pub networks: Vec<NetworkTracker>,
+    pub tasks_state: Arc<Mutex<TasksState>>,
 }
 
 // #[derive(Serialize, Deserialize, Debug)]

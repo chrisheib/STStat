@@ -31,6 +31,7 @@ let
     xorg.libXrandr
     mold
     openssl
+    ripgrep
   ];
 in
 pkgs.mkShell {

@@ -114,7 +114,7 @@ impl Widget for EdgyProgressBar {
         let height = if !compact {
             desired_height.unwrap_or(12.0)
         } else {
-            8.0
+            4.0
         };
         let (outer_rect, response) =
             ui.allocate_exact_size(vec2(desired_width, height), Sense::hover());

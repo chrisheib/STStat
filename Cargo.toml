@@ -21,6 +21,9 @@ egui_plot = "0.31"
 itertools = "0.11.0"
 lazy_static = "1"
 lsblk = "0.5.0"
+google-tasks1 = "6"
+hyper-rustls = "0.27"
+hyper-util = "0.1"
 # nvml-wrapper = "0.10" not really working because of inconsistent linux libraries :/ need nvml_lib in the exact same version as the installed driver.
 parking_lot = "0.12"
 procfs = "0.17.0"
@@ -28,9 +31,11 @@ procspawn = { version = "1.0.1", default-features = false, features = [
     "safe-shared-libraries",
 ] }
 reqwest = { version = "0.11", features = ["blocking", "serde_json", "json"] }
+rustls = { version = "0.23", features = ["aws_lc_rs"] }
 self_update = "0.37.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+yup-oauth2 = "11"
 
 # The performance hit of running this multithreaded is not worth it.
 sysinfo = { version = "0.36", default-features = false, features = [
@@ -41,6 +46,7 @@ sysinfo = { version = "0.36", default-features = false, features = [
     "user",
 ] }
 tokio = { version = "1", features = ["rt-multi-thread", "process", "macros"] }
+webbrowser = "1"
 winit = "0.30.8"
 # windows = { version = "0.48", features = [
 #     "Win32_UI_Shell",
