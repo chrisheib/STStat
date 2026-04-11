@@ -40,6 +40,7 @@ pub struct InnerSettings {
     pub tasks_list_id: String,
     pub tasks_max_items: usize,
     pub tasks_refresh_seconds: u64,
+    pub layout_debug_overlay: bool,
 }
 
 impl Default for InnerSettings {
@@ -57,6 +58,7 @@ impl Default for InnerSettings {
             tasks_list_id: "@default".to_string(),
             tasks_max_items: 5,
             tasks_refresh_seconds: 60,
+            layout_debug_overlay: false,
         }
     }
 }
@@ -127,6 +129,10 @@ pub fn show_settings(appdata: &mut MyApp, ui: &mut Ui, scale_override: Option<f3
         ui.checkbox(
             &mut settings.current_settings.tasks_enabled,
             "Enable Google Tasks",
+        );
+        ui.checkbox(
+            &mut settings.current_settings.layout_debug_overlay,
+            "Layout debug overlay",
         );
         ui.label("Google Tasks List ID:");
         ui.text_edit_singleline(&mut settings.current_settings.tasks_list_id);

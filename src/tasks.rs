@@ -21,8 +21,7 @@ const GOOGLE_CLIENT_SECRET_PATH: &str = "google_client_secret.json";
 const GOOGLE_TOKEN_CACHE_PATH: &str = "google_token_cache.json";
 const TASKS_READONLY_SCOPE: &str = "https://www.googleapis.com/auth/tasks.readonly";
 const LOGIN_TIMEOUT_SECONDS: u64 = 120;
-const EMBEDDED_GOOGLE_CLIENT_SECRET_JSON: &str =
-    include_str!("google_client_secret_embedded.txt");
+const EMBEDDED_GOOGLE_CLIENT_SECRET_JSON: &str = include_str!("google_client_secret_embedded.txt");
 
 #[derive(Debug, Clone, Default)]
 pub struct TaskListItem {
@@ -410,12 +409,9 @@ pub fn tasks_status_line(state: &Arc<Mutex<TasksState>>) -> String {
         TasksAuthState::AuthError { message } => {
             return format!("Auth error: {message}");
         }
-        TasksAuthState::Authenticated { last_token_refresh } => {
+        TasksAuthState::Authenticated { .. } => {
             if state.sync_in_flight {
-                return format!(
-                    "Tasks syncing... (token {})",
-                    last_token_refresh.format("%H:%M:%S")
-                );
+                return "Syncing...".to_string();
             }
         }
     }
@@ -425,7 +421,7 @@ pub fn tasks_status_line(state: &Arc<Mutex<TasksState>>) -> String {
     }
 
     if state.sync_in_flight {
-        return "Tasks syncing...".to_string();
+        return "Syncing...".to_string();
     }
 
     if let Some(last_sync) = state.last_sync {

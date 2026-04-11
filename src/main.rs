@@ -189,6 +189,8 @@ fn main() -> Result<(), eframe::Error> {
         INTERNAL_WINDOW_TITLE, // title used for identifying window to grab handle
         options,
         Box::new(move |cc| {
+            // Keep sidebar sizing in real screen pixels: 1 egui point == 1 physical pixel.
+            cc.egui_ctx.set_pixels_per_point(1.0);
             let mut v = Visuals::dark();
             v.override_text_color = Some(Color32::from_gray(250));
             // v.window_fill = get_windows_glass_color(use_plain_background);
@@ -407,25 +409,47 @@ impl eframe::App for MyApp {
         let use_plain_background = true;
 
         custom_window_frame(use_plain_background, ctx, frame, "STStat", |ui| {
+            let body_width = (SIDEBAR_WIDTH - 4.0).max(1.0);
             if update {
                 refresh_color(self, ui);
             }
-            ui.columns(2, |ui| {
-                ui[0].add(Label::new(
-                    RichText::new(format!("{}", self.framecount)).weak(),
-                ));
-                ui[1].with_layout(Layout::right_to_left(eframe::emath::Align::TOP), |ui| {
-                    ui.add(Label::new(
-                        RichText::new(format!("Linux v{}", cargo_crate_version!())).weak(),
-                    ));
-                });
-            });
+            ui.allocate_ui_with_layout(
+                egui::vec2(body_width, 0.0),
+                Layout::top_down(eframe::emath::Align::Min),
+                |ui| {
+                    ui.columns(2, |ui| {
+                        ui[0].add(Label::new(
+                            RichText::new(format!("{}", self.framecount)).weak(),
+                        ));
+                        ui[1].with_layout(Layout::right_to_left(eframe::emath::Align::TOP), |ui| {
+                            ui.add(Label::new(
+                                RichText::new(format!("Linux v{}", cargo_crate_version!())).weak(),
+                            ));
+                        });
+                    });
+                },
+            );
 
             let now = chrono::Local::now();
-            ui.vertical_centered(|ui| {
-                ui.heading(RichText::new(now.format("%H:%M:%S").to_string()).strong())
-            });
-            ui.separator();
+            ui.allocate_ui_with_layout(
+                egui::vec2(body_width, 0.0),
+                Layout::top_down_justified(eframe::emath::Align::Center),
+                |ui| {
+                    ui.label(
+                        RichText::new(now.format("%H:%M:%S").to_string())
+                            .monospace()
+                            .strong()
+                            .size(20.0),
+                    );
+                },
+            );
+            ui.allocate_ui_with_layout(
+                egui::vec2(body_width, 0.0),
+                Layout::top_down(eframe::emath::Align::Min),
+                |ui| {
+                    ui.separator();
+                },
+            );
 
             if self
                 .update_available
@@ -441,6 +465,8 @@ impl eframe::App for MyApp {
             }
 
             ScrollArea::vertical().show(ui, |ui| {
+                ui.set_min_width(body_width);
+                ui.set_max_width(body_width);
                 // println!("yo");
                 system_info::set_system_info_components(self, ui);
                 ui.checkbox(&mut self.show_settings, "Show settings");
@@ -504,14 +530,17 @@ fn custom_window_frame(
             rect.min.y = title_bar_rect.max.y;
             rect
         }
-        .shrink(4.0);
-        let uib = UiBuilder::default();
-        // let mut content_ui = ui.child_ui(content_rect, *ui.layout());
-        ui.scope_builder(uib, add_contents);
-        // let mut content_ui = ui.new_child(ui_builder);
-        // add_contents(&mut ui);
-        let b = UiBuilder::new().max_rect(content_rect);
-        ui.new_child(b);
+        .shrink(2.0);
+
+        let mut content_rect = content_rect;
+        let max_body_width = (SIDEBAR_WIDTH).max(1.0);
+        let target_max_x = content_rect.min.x + max_body_width;
+        if content_rect.max.x > target_max_x {
+            content_rect.max.x = target_max_x;
+        }
+
+        let mut content_ui = ui.new_child(UiBuilder::new().max_rect(content_rect));
+        add_contents(&mut content_ui);
     });
 }
 

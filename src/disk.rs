@@ -240,10 +240,8 @@ impl MyDiskInfo {
 
             let displayname = if drive_letter.trim().is_empty() {
                 "/".to_string()
-            } else if drive_letter.len() < 8 {
-                drive_letter.to_string()
             } else {
-                "...".to_string() + &drive_letter[drive_letter.len() - 6..]
+                drive_letter.to_string()
             };
             let mut blockdevicename = bd.name.clone();
             let diskseq = bd.diskseq.clone().unwrap_or_default();

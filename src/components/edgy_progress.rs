@@ -19,6 +19,7 @@ pub struct EdgyProgressBar {
     animate: bool,
     colored_dot: Option<Color32>,
     compact: bool,
+    text_align_right: bool,
 }
 
 impl EdgyProgressBar {
@@ -33,6 +34,7 @@ impl EdgyProgressBar {
             animate: false,
             colored_dot: None,
             compact: false,
+            text_align_right: false,
         }
     }
 
@@ -76,6 +78,12 @@ impl EdgyProgressBar {
         self
     }
 
+    /// Right-align the text inside the bar.
+    pub fn text_align_right(mut self, text_align_right: bool) -> Self {
+        self.text_align_right = text_align_right;
+        self
+    }
+
     /// Whether to display a loading animation when progress `< 1`.
     /// Note that this will cause the UI to be redrawn.
     /// Defaults to `false`.
@@ -105,6 +113,7 @@ impl Widget for EdgyProgressBar {
             animate,
             colored_dot,
             compact,
+            text_align_right,
         } = self;
 
         // let animate = animate && progress < 1.0;
@@ -194,9 +203,17 @@ impl Widget for EdgyProgressBar {
                         f32::INFINITY,
                         TextStyle::Button,
                     );
-                    let text_pos = outer_rect.left_center() - Vec2::new(0.0, galley.size().y / 2.0)
-                        + vec2(ui.spacing().item_spacing.x / 2.0, 0.0)
-                        + vec2(dot_space, 0.0);
+                    let text_pos = if text_align_right {
+                        outer_rect.right_center()
+                            - Vec2::new(
+                                galley.size().x + ui.spacing().item_spacing.x / 2.0 + 1.0,
+                                galley.size().y / 2.0,
+                            )
+                    } else {
+                        outer_rect.left_center() - Vec2::new(0.0, galley.size().y / 2.0)
+                            + vec2(ui.spacing().item_spacing.x / 2.0, 0.0)
+                            + vec2(dot_space, 0.0)
+                    };
                     let text_color = visuals
                         .override_text_color
                         .unwrap_or(visuals.selection.stroke.color);
