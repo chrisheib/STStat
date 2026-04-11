@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     // sidebar::{dispose_sidebar, setup_sidebar},
     tasks::{
-        cancel_sign_in, has_oauth_client_config, is_awaiting_callback,
-        oauth_client_source_label, sign_out, start_sign_in, tasks_status_line,
+        cancel_sign_in, has_oauth_client_config, is_awaiting_callback, oauth_client_source_label,
+        sign_out, start_sign_in, tasks_status_line,
     },
     CurrentStep,
     MyApp,

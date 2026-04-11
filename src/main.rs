@@ -20,15 +20,20 @@ use eframe::{
 use network::{init_networks, NetworkTracker};
 use parking_lot::Mutex;
 use ping::tcp_ping_tokio;
+use sections::gpu::GpuData;
 use self_update::{backends::github::Update, cargo_crate_version};
 use settings::{show_settings, MySettings};
 use sysinfo::{Disks, System};
 use system_info::{
     get_windows_glass_color, loop_amd_temp_sensor, loop_iostat_disk_util, refresh, refresh_color,
-    run_nvidia_smi, GpuData,
+    run_nvidia_smi,
 };
 use tasks::{bootstrap_auth_state, TasksState};
 use tokio::{runtime::Runtime, time::sleep};
+
+// On read problems, run: lodctr /r
+pub const UPDATE_INTERVAL_MILLIS: i64 = 1000;
+pub const INTERNAL_WINDOW_TITLE: &str = "RS_Sidebar";
 
 // mod autostart;
 mod bytes_format;
@@ -42,12 +47,9 @@ mod settings;
 mod disk;
 mod network;
 mod ping;
+mod sections;
 mod system_info;
 mod tasks;
-
-// On read problems, run: lodctr /r
-pub const UPDATE_INTERVAL_MILLIS: i64 = 1000;
-pub const INTERNAL_WINDOW_TITLE: &str = "RS_Sidebar";
 pub const SIDEBAR_WIDTH: f32 = 130.0;
 
 fn main() -> Result<(), eframe::Error> {
@@ -438,6 +440,7 @@ impl eframe::App for MyApp {
                     ui.label(
                         RichText::new(now.format("%H:%M:%S").to_string())
                             .monospace()
+                            .color(Color32::from_gray(225))
                             .strong()
                             .size(20.0),
                     );
