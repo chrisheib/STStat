@@ -72,11 +72,7 @@ pub fn render_tasks_section(
         table.body(|body| {
             body.rows(SIDEBAR_COMPACT_TABLE_ROW_HEIGHT, row_count, |mut row| {
                 if let Some(task) = tasks.get(row.index()) {
-                    let label = if let Some(due) = task.due {
-                        format!("{}  {}", due.format("%d.%m.%y"), task.title)
-                    } else {
-                        format!("--.--.--  {}", task.title)
-                    };
+                    let label = task.title.clone();
 
                     row.col(|ui| {
                         ui.add(

@@ -1,28 +1,23 @@
 # STStat
-Windows Sidebar showing various system information written in rust 🦀, inspired by Windows Vista / 7 Gadgets.
+Sidebar showing various system information written in rust 🦀, inspired by Windows Vista / 7 Gadgets.
 
-![Preview](https://raw.githubusercontent.com/chrisheib/STStat/main/screenshot/desktop-main.jpg)
-
-Needs [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) to run in the background and its web server to be started on port 8085:
-
-![Preview](https://raw.githubusercontent.com/chrisheib/STStat/main/screenshot/lhm.jpg)
+![Preview](https://raw.githubusercontent.com/chrisheib/STStat/linux/screenshot/desktop-main.jpg)
 
 ## Linux Caveats
-* To read energy use, the energy_uj system file needs to be readable by others. Add `chmod a+r /sys/class/powercap/intel-rapl:0/energy_uj` to startup scripts.
+To read energy use, the energy_uj system file needs to be readable by others. Add `chmod a+r /sys/class/powercap/intel-rapl:0/energy_uj` to startup scripts.
 
 ### KDE install
-* import the window rule
-* add a 130px wide empty panel where the sidebar should go
+- import the window rule
+- add a 130px wide empty panel where the sidebar should go
+
+### Using the task list
+The tasklist depends on the google API. To use it, there needs to exist a google_client_secret.json referencing a google project with fitting permissions in the project root.
 
 ## Goals
 * 💻 Provide an overview of your computers ressources.
 * ✅ Focus on stats that provide actual value.
 * 🚀 Don't generate much load. STStat is developed as replacement for Windows Gadgets that were running in Webviews rendered with HTML and JS, and should always be easier on the battery and general ressource usage. (If you see high load, please use 'Settings -> trace perf' to trace the actual performance, save a report a few seconds later with 'save trace', and make sure to include the resulting timings.txt in your issue!)
 * 🪟 Look and feel like a true native sidebar, including limiting the space of maximised windows and not showing up in the task switcher.
-
-## Features
-### 2026-04-11
-Added Google Tasks integration: In settings, log in to google to display a list of open google tasks.
 
 ## Feature Overview
 * CPU and RAM:
@@ -46,6 +41,8 @@ Added Google Tasks integration: In settings, log in to google to display a list 
   * Ping google once a second
   * M: Max ping in the last 2 minutes
   * C: Time of last ping response
+* Tasks
+  * Log in to google in the settings to show a list of your pending google tasks
 * Processes (Doubleclick to open task manager!)
   * Group processes by name (x10 -> 10 processes with this name)
   * show top CPU and top RAM processes
@@ -55,3 +52,8 @@ Added Google Tasks integration: In settings, log in to google to display a list 
   * Screen ID: On which screen the sidebar should be displayed
   * Display on right side: Check to move the sidebar to the right screen edge
   * trace perf / save trace: Keep an internal record of performance timings. Click 'save' after tracing for a few seconds to save it into a timings.txt in the folder containing the exe and include the file in a new issue to help me debug performance issues!
+
+
+## Changes
+### 2026-04-11
+Added Google Tasks integration: In settings, log in to google to display a list of open google tasks. Also did a UI refactor.

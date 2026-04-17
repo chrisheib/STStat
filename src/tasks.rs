@@ -21,7 +21,13 @@ const GOOGLE_CLIENT_SECRET_PATH: &str = "google_client_secret.json";
 const GOOGLE_TOKEN_CACHE_PATH: &str = "google_token_cache.json";
 const TASKS_READONLY_SCOPE: &str = "https://www.googleapis.com/auth/tasks.readonly";
 const LOGIN_TIMEOUT_SECONDS: u64 = 120;
-const EMBEDDED_GOOGLE_CLIENT_SECRET_JSON: &str = include_str!("google_client_secret_embedded.txt");
+/// JSON content of the embedded Google OAuth client secret, baked in at compile time by build.rs.
+/// Falls back to an empty string when the source file is absent so the binary still compiles.
+const EMBEDDED_GOOGLE_CLIENT_SECRET_JSON: &str = match option_env!("GOOGLE_CLIENT_SECRET_EMBEDDED")
+{
+    Some(s) => s,
+    None => "",
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct TaskListItem {
